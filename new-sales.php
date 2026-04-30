@@ -271,16 +271,16 @@ function buildCard(id, name, cat) {
         <div id="c${id}-body">
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem .9rem">
                 <div class="form-group">
+                    <label>Quantity (kg)</label>
+                    <input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})">
+                </div>
+                <div class="form-group">
                     <label>Selling Price (FRW/kg)</label>
                     <input type="text" id="c${id}-sell" placeholder="0.00" oninput="calcCard(${id})">
                 </div>
                 <div class="form-group">
                     <label>Cost Price (FRW/kg)</label>
                     <input type="text" id="c${id}-cost" value="${costDef}" placeholder="0.00" oninput="calcCard(${id})">
-                </div>
-                <div class="form-group">
-                    <label>Quantity (kg)</label>
-                    <input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})">
                 </div>
             </div>
             <div id="c${id}-qty-err" style="display:none;color:#dc2626;font-size:.82rem;margin-bottom:.4rem">

@@ -140,6 +140,16 @@ $loans = $stmt->fetchAll();
 
 $has_filters = (bool)array_filter($filters);
 
+// Global unpaid totals (all time, no filter)
+$global_totals = $pdo->query("
+    SELECT
+        COALESCE(SUM(CASE WHEN type='loan'      THEN amount ELSE 0 END), 0) AS total_loaned,
+        COALESCE(SUM(CASE WHEN type='repayment' THEN amount ELSE 0 END), 0) AS total_repaid
+    FROM supplier_loans
+")->fetch(PDO::FETCH_ASSOC);
+$global_unpaid      = (float)$global_totals['total_loaned'] - (float)$global_totals['total_repaid'];
+$global_suppliers_with_debt = count(array_filter($bal_raw, fn($r) => (float)$r['balance'] > 0));
+
 // Summary totals for filtered view
 $tot_s = $pdo->prepare("
     SELECT
@@ -160,6 +170,34 @@ include 'includes/header.php';
     <button class="btn btn-primary" onclick="openModal()">
         <i class="fas fa-plus"></i> Record Loan / Repayment
     </button>
+</div>
+
+<!-- ── Global totals ─────────────────────────────────────────── -->
+<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.25rem">
+    <div class="stat-card">
+        <div class="stat-icon si-red"><i class="fas fa-arrow-trend-up"></i></div>
+        <div class="stat-info">
+            <div class="stat-label">Total Loaned</div>
+            <div class="stat-value"><?= number_format($global_totals['total_loaned'], 0) ?> <small style="font-size:.6rem;font-weight:500;color:var(--text-muted)">FRW</small></div>
+            <div class="stat-sub">All time disbursed</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon si-green"><i class="fas fa-arrow-trend-down"></i></div>
+        <div class="stat-info">
+            <div class="stat-label">Total Repaid</div>
+            <div class="stat-value"><?= number_format($global_totals['total_repaid'], 0) ?> <small style="font-size:.6rem;font-weight:500;color:var(--text-muted)">FRW</small></div>
+            <div class="stat-sub">All time recovered</div>
+        </div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid <?= $global_unpaid > 0 ? 'var(--danger)' : 'var(--success)' ?>">
+        <div class="stat-icon <?= $global_unpaid > 0 ? 'si-red' : 'si-green' ?>"><i class="fas fa-hand-holding-dollar"></i></div>
+        <div class="stat-info">
+            <div class="stat-label">Total Unpaid</div>
+            <div class="stat-value" style="color:<?= $global_unpaid > 0 ? 'var(--danger)' : 'var(--success)' ?>"><?= number_format($global_unpaid, 0) ?> <small style="font-size:.6rem;font-weight:500;color:var(--text-muted)">FRW</small></div>
+            <div class="stat-sub"><?= $global_suppliers_with_debt ?> supplier<?= $global_suppliers_with_debt !== 1 ? 's' : '' ?> with outstanding debt</div>
+        </div>
+    </div>
 </div>
 
 <!-- ── Balance summary cards ─────────────────────────────────── -->

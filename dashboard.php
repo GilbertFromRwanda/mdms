@@ -131,72 +131,55 @@ require 'includes/header.php';
 ?>
 
 <!-- ── KPI Row ────────────────────────────────────────────────────── -->
-<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(175px,1fr));margin-bottom:1.25rem">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.25rem">
 
-    <div class="stat-card">
-        <div class="stat-icon si-blue"><i class="fas fa-sack-dollar"></i></div>
-        <div class="stat-info">
-            <div class="stat-label">Revenue (this month)</div>
-            <div class="stat-value"><?= fmt($kpi['revenue_month']) ?> <small style="font-size:.6rem;font-weight:500;color:var(--text-muted)">FRW</small></div>
-            <?php if ($rev_pct !== null): ?>
-            <div class="stat-sub" style="color:<?= $rev_pct>=0?'var(--success)':'var(--danger)' ?>">
-                <i class="fas fa-arrow-<?= $rev_pct>=0?'up':'down' ?>"></i> <?= abs($rev_pct) ?>% vs last month
-            </div>
-            <?php else: ?>
-            <div class="stat-sub">No prior month data</div>
-            <?php endif; ?>
+    <div style="background:#1d4ed8;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-sack-dollar" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['revenue_month']) ?></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Revenue · FRW</div>
+        <?php if ($rev_pct !== null): ?>
+        <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
+            <i class="fas fa-arrow-<?= $rev_pct>=0?'up':'down' ?>"></i> <?= abs($rev_pct) ?>% vs last month
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <div style="background:#059669;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-chart-line" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1;color:<?= $kpi['profit_month']>=0?'#fff':'#fca5a5' ?>"><?= fmt($kpi['profit_month']) ?></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Net Profit · FRW</div>
+        <?php if ($prof_pct !== null): ?>
+        <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
+            <i class="fas fa-arrow-<?= $prof_pct>=0?'up':'down' ?>"></i> <?= abs($prof_pct) ?>% vs last month
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <div style="background:#d97706;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-warehouse" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmtKg($kpi['total_stock']) ?></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Total Stock · kg</div>
+        <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
+            <?= count($inventory) ?> mineral types
         </div>
     </div>
 
-    <div class="stat-card">
-        <div class="stat-icon si-green"><i class="fas fa-chart-line"></i></div>
-        <div class="stat-info">
-            <div class="stat-label">Net Profit (this month)</div>
-            <div class="stat-value" style="color:<?= $kpi['profit_month']>=0?'var(--success)':'var(--danger)' ?>"><?= fmt($kpi['profit_month']) ?> <small style="font-size:.6rem;font-weight:500;color:var(--text-muted)">FRW</small></div>
-            <?php if ($prof_pct !== null): ?>
-            <div class="stat-sub" style="color:<?= $prof_pct>=0?'var(--success)':'var(--danger)' ?>">
-                <i class="fas fa-arrow-<?= $prof_pct>=0?'up':'down' ?>"></i> <?= abs($prof_pct) ?>% vs last month
-            </div>
-            <?php else: ?>
-            <div class="stat-sub">No prior month data</div>
-            <?php endif; ?>
+    <div style="background:#0891b2;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-boxes-stacked" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= $kpi['batches_month'] ?></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Batches This Month</div>
+        <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
+            Lots received
         </div>
     </div>
 
-    <div class="stat-card">
-        <div class="stat-icon si-amber"><i class="fas fa-warehouse"></i></div>
-        <div class="stat-info">
-            <div class="stat-label">Total Stock</div>
-            <div class="stat-value"><?= fmtKg($kpi['total_stock']) ?> <small style="font-size:.6rem;font-weight:500;color:var(--text-muted)">kg</small></div>
-            <div class="stat-sub"><?= count($inventory) ?> mineral types</div>
-        </div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-icon si-cyan"><i class="fas fa-boxes-stacked"></i></div>
-        <div class="stat-info">
-            <div class="stat-label">Batches This Month</div>
-            <div class="stat-value"><?= $kpi['batches_month'] ?></div>
-            <div class="stat-sub">Lots received</div>
-        </div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-icon si-purple"><i class="fas fa-building"></i></div>
-        <div class="stat-info">
-            <div class="stat-label">Suppliers</div>
-            <div class="stat-value"><?= $kpi['suppliers'] ?></div>
-            <div class="stat-sub"><?= $kpi['buyers'] ?> buyers registered</div>
-        </div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-icon si-red"><i class="fas fa-hand-holding-dollar"></i></div>
-        <div class="stat-info">
-            <div class="stat-label">Outstanding Loans</div>
-            <div class="stat-value" style="color:<?= $kpi['loans_balance']>0?'var(--danger)':'var(--success)' ?>"><?= fmt($kpi['loans_balance']) ?> <small style="font-size:.6rem;font-weight:500;color:var(--text-muted)">FRW</small></div>
-            <div class="stat-sub"><a href="loans.php" style="color:inherit;text-decoration:underline">View details</a></div>
-        </div>
+    <div style="background:<?= $kpi['loans_balance']>0?'#dc2626':'#16a34a' ?>;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-hand-holding-dollar" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['loans_balance']) ?></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Unpaid Loans · FRW</div>
+        <a href="loans.php" style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem;color:#fff;text-decoration:none">
+            View details
+        </a>
     </div>
 </div>
 
