@@ -6,26 +6,35 @@ $page_title  = 'Dashboard';
 $extra_head  = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>';
 
 /* ── KPI stats ───────────────────────────────────────────────────── */
+// Precompute month boundaries in PHP so MySQL sees literal constants and can
+// use range scans on date indexes instead of row-by-row MONTH()/YEAR() calls.
+$cur_month_start  = date('Y-m-01');
+$next_month_start = date('Y-m-01', strtotime('+1 month'));
+$prev_month_start = date('Y-m-01', strtotime('-1 month'));
+
 $kpi = $pdo->query("
     SELECT
         /* revenue & profit this month */
         COALESCE((SELECT SUM(total_revenue) FROM sale_details
-                   WHERE MONTH(sale_date)=MONTH(CURDATE()) AND YEAR(sale_date)=YEAR(CURDATE())), 0) AS revenue_month,
+                   WHERE sale_date >= '$cur_month_start'
+                     AND sale_date <  '$next_month_start'), 0) AS revenue_month,
         COALESCE((SELECT SUM(benefit)       FROM sale_details
-                   WHERE MONTH(sale_date)=MONTH(CURDATE()) AND YEAR(sale_date)=YEAR(CURDATE())), 0) AS profit_month,
+                   WHERE sale_date >= '$cur_month_start'
+                     AND sale_date <  '$next_month_start'), 0) AS profit_month,
         /* revenue & profit last month */
         COALESCE((SELECT SUM(total_revenue) FROM sale_details
-                   WHERE MONTH(sale_date)=MONTH(CURDATE()-INTERVAL 1 MONTH)
-                     AND YEAR(sale_date)=YEAR(CURDATE()-INTERVAL 1 MONTH)), 0) AS revenue_prev,
+                   WHERE sale_date >= '$prev_month_start'
+                     AND sale_date <  '$cur_month_start'), 0) AS revenue_prev,
         COALESCE((SELECT SUM(benefit)       FROM sale_details
-                   WHERE MONTH(sale_date)=MONTH(CURDATE()-INTERVAL 1 MONTH)
-                     AND YEAR(sale_date)=YEAR(CURDATE()-INTERVAL 1 MONTH)), 0) AS profit_prev,
+                   WHERE sale_date >= '$prev_month_start'
+                     AND sale_date <  '$cur_month_start'), 0) AS profit_prev,
         /* totals */
         COALESCE((SELECT SUM(current_stock) FROM inventory), 0)                                    AS total_stock,
         (SELECT COUNT(*) FROM suppliers)                                                            AS suppliers,
         (SELECT COUNT(*) FROM buyers)                                                               AS buyers,
         (SELECT COUNT(*) FROM batches
-          WHERE MONTH(received_date)=MONTH(CURDATE()) AND YEAR(received_date)=YEAR(CURDATE()))     AS batches_month,
+          WHERE received_date >= '$cur_month_start'
+            AND received_date <  '$next_month_start')                                              AS batches_month,
         /* today revenue */
         COALESCE((SELECT SUM(total_revenue) FROM sale_details
                    WHERE sale_date = CURDATE()), 0)                                                AS revenue_today,
@@ -34,17 +43,20 @@ $kpi = $pdo->query("
                   FROM supplier_loans), 0)                                                         AS loans_balance,
         /* purchased this month (batches IN) */
         COALESCE((SELECT SUM(quantity) FROM batches
-                   WHERE MONTH(received_date)=MONTH(CURDATE()) AND YEAR(received_date)=YEAR(CURDATE())), 0) AS purchased_kg,
+                   WHERE received_date >= '$cur_month_start'
+                     AND received_date <  '$next_month_start'), 0) AS purchased_kg,
         COALESCE((SELECT SUM(total_amount) FROM transactions
                    WHERE transaction_type='IN'
-                     AND MONTH(transaction_date)=MONTH(CURDATE()) AND YEAR(transaction_date)=YEAR(CURDATE())), 0) AS purchased_amount,
+                     AND transaction_date >= '$cur_month_start'
+                     AND transaction_date <  '$next_month_start'), 0) AS purchased_amount,
         /* sold this month (sale_details OUT) */
         COALESCE((SELECT SUM(qty) FROM sale_details
-                   WHERE MONTH(sale_date)=MONTH(CURDATE()) AND YEAR(sale_date)=YEAR(CURDATE())), 0) AS sold_kg,
-        /* total purchase cost this month (cost_price × qty from sale_details used as proxy;
-           batches don't store unit price so we use total_cost from sale_details) */
+                   WHERE sale_date >= '$cur_month_start'
+                     AND sale_date <  '$next_month_start'), 0) AS sold_kg,
+        /* total purchase cost this month */
         COALESCE((SELECT SUM(total_cost) FROM sale_details
-                   WHERE MONTH(sale_date)=MONTH(CURDATE()) AND YEAR(sale_date)=YEAR(CURDATE())), 0) AS sold_cost
+                   WHERE sale_date >= '$cur_month_start'
+                     AND sale_date <  '$next_month_start'), 0) AS sold_cost
 ")->fetch();
 
 /* ── Revenue & cost — last 6 months ─────────────────────────────── */
