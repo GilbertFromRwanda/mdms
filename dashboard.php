@@ -26,9 +26,25 @@ $kpi = $pdo->query("
         (SELECT COUNT(*) FROM buyers)                                                               AS buyers,
         (SELECT COUNT(*) FROM batches
           WHERE MONTH(received_date)=MONTH(CURDATE()) AND YEAR(received_date)=YEAR(CURDATE()))     AS batches_month,
+        /* today revenue */
+        COALESCE((SELECT SUM(total_revenue) FROM sale_details
+                   WHERE sale_date = CURDATE()), 0)                                                AS revenue_today,
         /* outstanding loans */
         COALESCE((SELECT SUM(CASE WHEN type='loan' THEN amount ELSE -amount END)
-                  FROM supplier_loans), 0)                                                         AS loans_balance
+                  FROM supplier_loans), 0)                                                         AS loans_balance,
+        /* purchased this month (batches IN) */
+        COALESCE((SELECT SUM(quantity) FROM batches
+                   WHERE MONTH(received_date)=MONTH(CURDATE()) AND YEAR(received_date)=YEAR(CURDATE())), 0) AS purchased_kg,
+        COALESCE((SELECT SUM(total_amount) FROM transactions
+                   WHERE transaction_type='IN'
+                     AND MONTH(transaction_date)=MONTH(CURDATE()) AND YEAR(transaction_date)=YEAR(CURDATE())), 0) AS purchased_amount,
+        /* sold this month (sale_details OUT) */
+        COALESCE((SELECT SUM(qty) FROM sale_details
+                   WHERE MONTH(sale_date)=MONTH(CURDATE()) AND YEAR(sale_date)=YEAR(CURDATE())), 0) AS sold_kg,
+        /* total purchase cost this month (cost_price × qty from sale_details used as proxy;
+           batches don't store unit price so we use total_cost from sale_details) */
+        COALESCE((SELECT SUM(total_cost) FROM sale_details
+                   WHERE MONTH(sale_date)=MONTH(CURDATE()) AND YEAR(sale_date)=YEAR(CURDATE())), 0) AS sold_cost
 ")->fetch();
 
 /* ── Revenue & cost — last 6 months ─────────────────────────────── */
@@ -112,15 +128,15 @@ $loan_suppliers = $pdo->query("
 ")->fetchAll();
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
-function fmt($n) {
+function fmt(mixed $n): string {
     $n = (float)$n;
     if (abs($n) >= 1_000_000_000) return number_format($n/1_000_000_000, 2).'B';
     if (abs($n) >= 1_000_000)     return number_format($n/1_000_000, 2).'M';
     if (abs($n) >= 1_000)         return number_format($n/1_000, 1).'K';
     return number_format($n, 0);
 }
-function fmtKg($n) { return number_format((float)$n, 1); }
-function pctChange($now, $prev) {
+function fmtKg(mixed $n): string { return number_format((float)$n, 1); }
+function pctChange(mixed $now, mixed $prev): ?float {
     if ($prev == 0) return null;
     return round(($now - $prev) / abs($prev) * 100, 1);
 }
@@ -133,43 +149,65 @@ require 'includes/header.php';
 <!-- ── KPI Row ────────────────────────────────────────────────────── -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.25rem">
 
+    <!-- TODAY'S REVENUE -->
+    <div style="background:#be185d;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-calendar-day" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.7;margin-bottom:-.1rem"><?= date('d M Y') ?></div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['revenue_today']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Today's Revenue</div>
+    </div>
+
+    <!-- MONTHLY REVENUE -->
     <div style="background:#1d4ed8;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
-        <i class="fas fa-sack-dollar" style="font-size:1.4rem;opacity:.85"></i>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['revenue_month']) ?></div>
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Revenue · FRW</div>
+        <i class="fas fa-calendar-month" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.7;margin-bottom:-.1rem"><?= date('F Y') ?></div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['revenue_month']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Monthly Revenue</div>
         <?php if ($rev_pct !== null): ?>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
-            <i class="fas fa-arrow-<?= $rev_pct>=0?'up':'down' ?>"></i> <?= abs($rev_pct) ?>% vs last month
+            <i class="fas fa-arrow-<?= $rev_pct>=0?'up':'down' ?>"></i> <?= abs($rev_pct) ?>% vs <?= date('M', strtotime('last month')) ?>
         </div>
         <?php endif; ?>
     </div>
 
+    <!-- MONTHLY NET PROFIT -->
     <div style="background:#059669;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
         <i class="fas fa-chart-line" style="font-size:1.4rem;opacity:.85"></i>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1;color:<?= $kpi['profit_month']>=0?'#fff':'#fca5a5' ?>"><?= fmt($kpi['profit_month']) ?></div>
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Net Profit · FRW</div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.7;margin-bottom:-.1rem"><?= date('F Y') ?></div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1;color:<?= $kpi['profit_month']>=0?'#fff':'#fca5a5' ?>"><?= fmt($kpi['profit_month']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Monthly Net Profit</div>
         <?php if ($prof_pct !== null): ?>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
-            <i class="fas fa-arrow-<?= $prof_pct>=0?'up':'down' ?>"></i> <?= abs($prof_pct) ?>% vs last month
+            <i class="fas fa-arrow-<?= $prof_pct>=0?'up':'down' ?>"></i> <?= abs($prof_pct) ?>% vs <?= date('M', strtotime('last month')) ?>
         </div>
         <?php endif; ?>
     </div>
 
+    <!-- TOTAL STOCK -->
     <div style="background:#d97706;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
         <i class="fas fa-warehouse" style="font-size:1.4rem;opacity:.85"></i>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmtKg($kpi['total_stock']) ?></div>
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Total Stock · kg</div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmtKg($kpi['total_stock']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">kg</span></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Total Stock</div>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
             <?= count($inventory) ?> mineral types
         </div>
     </div>
 
-    <div style="background:#0891b2;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
-        <i class="fas fa-boxes-stacked" style="font-size:1.4rem;opacity:.85"></i>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= $kpi['batches_month'] ?></div>
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Batches This Month</div>
+    <div style="background:#0f766e;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-truck-ramp-box" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmtKg($kpi['purchased_kg']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">kg</span></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Purchased This Month</div>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
-            Lots received
+            <?= fmt($kpi['purchased_amount']) ?> FRW paid
+        </div>
+    </div>
+
+    <div style="background:#7e22ce;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
+        <i class="fas fa-cart-arrow-down" style="font-size:1.4rem;opacity:.85"></i>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmtKg($kpi['sold_kg']) ?></div>
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Sold This Month</div>
+        <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
+            <?= fmt($kpi['sold_cost']) ?> FRW cost
         </div>
     </div>
 
