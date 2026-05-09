@@ -9,17 +9,34 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
         $minerals_post = $_POST['mineral'] ?? [];
         if(empty($minerals_post)) throw new Exception('No minerals selected.');
 
-        $buyer_id  = $_POST['buyer_id'];
+        $buyer_id  = intval($_POST['buyer_id'] ?? 0);
+        if(!$buyer_id) throw new Exception('Please select a buyer.');
         $currency  = in_array($_POST['currency'] ?? '', ['USD','FRW']) ? $_POST['currency'] : 'FRW';
-        $sale_date = $_POST['sale_date'];
+        $sale_date = $_POST['sale_date'] ?? date('Y-m-d');
         $notes     = $_POST['notes'] ?? '';
+
+        /* Pre-process payment rows */
+        $total_amount_paid = 0.0;
+        $valid_payments    = [];
+        foreach($_POST['payments'] ?? [] as $p){
+            $pm  = in_array($p['method'] ?? '', ['cash','bank','momo']) ? $p['method'] : null;
+            $amt = floatval($p['amount'] ?? 0);
+            $aid = intval($p['account_id'] ?? 0);
+            if(!$pm || $amt <= 0) continue;
+            $total_amount_paid += $amt;
+            $valid_payments[] = ['method'=>$pm,'account_id'=>$aid,'amount'=>$amt];
+        }
 
         $pdo->beginTransaction();
 
-        $created = [];
+        $created          = [];
+        $first_sale_db_id = null;
+        $total_revenue    = 0.0;
+        $revenue_known    = true;
+
         foreach($minerals_post as $mid => $mdata){
-            $sale_id  = 'SALE-'.date('Ymd').'-'.rand(1000,9999);
-            $qty      = floatval($mdata['quantity']      ?? 0);
+            $sale_id = 'SALE-'.date('Ymd').'-'.rand(1000,9999);
+            $qty     = floatval($mdata['quantity'] ?? 0);
 
             /* Stock check */
             $ck = $pdo->prepare("SELECT current_stock FROM inventory WHERE mineral_type_id=? FOR UPDATE");
@@ -34,11 +51,14 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
                 $mname = $mn->fetch()['name'] ?? "Mineral $mid";
                 throw new Exception("Insufficient stock for <strong>$mname</strong>. Available: <strong>".number_format($stock,3)." kg</strong>, requested: <strong>".number_format($qty,3)." kg</strong>.");
             }
-            $sell_pu  = ($mdata['selling_price'] ?? '') !== '' ? floatval($mdata['selling_price']) : null;
-            $cost_pu  = ($mdata['cost_price']    ?? '') !== '' ? floatval($mdata['cost_price'])    : null;
-            $revenue  = $sell_pu !== null ? round($sell_pu * $qty, 2) : null;
-            $cost     = $cost_pu !== null ? round($cost_pu * $qty, 2) : null;
-            $benefit  = ($revenue !== null && $cost !== null) ? round($revenue - $cost, 2) : null;
+            $sell_pu = ($mdata['selling_price'] ?? '') !== '' ? floatval($mdata['selling_price']) : null;
+            $cost_pu = ($mdata['cost_price']    ?? '') !== '' ? floatval($mdata['cost_price'])    : null;
+            $revenue = $sell_pu !== null ? round($sell_pu * $qty, 2) : null;
+            $cost    = $cost_pu !== null ? round($cost_pu * $qty, 2) : null;
+            $benefit = ($revenue !== null && $cost !== null) ? round($revenue - $cost, 2) : null;
+
+            if($revenue === null) $revenue_known = false;
+            else $total_revenue = round($total_revenue + $revenue, 2);
 
             $pdo->prepare("
                 INSERT INTO sales
@@ -46,6 +66,7 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
                 VALUES (?,?,?,?,?,?,?)
             ")->execute([$sale_id,$mid,$buyer_id,$qty,$sale_date,$notes,$_SESSION['user_id']]);
             $lastId = $pdo->lastInsertId();
+            if($first_sale_db_id === null) $first_sale_db_id = $lastId;
 
             $pdo->prepare("
                 INSERT INTO sale_details
@@ -81,6 +102,34 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
             ];
         }
 
+        /* Credit payment accounts (money arrives from buyer) */
+        $stmtAcct    = $pdo->prepare("SELECT balance,account_name FROM company_accounts WHERE id=? AND is_active=1 AND account_type=? FOR UPDATE");
+        $stmtUpdBal  = $pdo->prepare("UPDATE company_accounts SET balance=? WHERE id=?");
+        $stmtAcctTxn = $pdo->prepare("INSERT INTO account_transactions (account_id,txn_type,amount,balance_after,reference_type,reference_id,description,created_by) VALUES (?,'credit',?,?,'sale',?,?,?)");
+        foreach($valid_payments as $vp){
+            if(!$vp['account_id']) continue;
+            $stmtAcct->execute([$vp['account_id'],$vp['method']]);
+            $acct = $stmtAcct->fetch();
+            if(!$acct) throw new Exception("Payment account #{$vp['account_id']} not found or inactive.");
+            $newBal = round($acct['balance'] + $vp['amount'], 2);
+            $stmtUpdBal->execute([$newBal,$vp['account_id']]);
+            $stmtAcctTxn->execute([$vp['account_id'],$vp['amount'],$newBal,$first_sale_db_id,'Payment from buyer#'.$buyer_id,$_SESSION['user_id']]);
+        }
+
+        /* Record buyer credit / advance-consumption entry */
+        if($revenue_known){
+            $shortfall = round($total_revenue - $total_amount_paid, 2);
+            if($shortfall > 0.005){
+                /* Buyer still owes us */
+                $pdo->prepare("INSERT INTO buyer_loans (buyer_id,sale_id,type,amount,notes,is_advance,created_by) VALUES (?,?,'loan',?,?,0,?)")
+                    ->execute([$buyer_id,$first_sale_db_id,$shortfall,$notes ?: 'Credit from sale',$_SESSION['user_id']]);
+            } elseif($shortfall < -0.005){
+                /* Buyer overpaid — consume from their advance balance */
+                $pdo->prepare("INSERT INTO buyer_loans (buyer_id,sale_id,type,amount,notes,is_advance,created_by) VALUES (?,?,'repayment',?,?,0,?)")
+                    ->execute([$buyer_id,$first_sale_db_id,round(-$shortfall,2),'Advance consumed by sale',$_SESSION['user_id']]);
+            }
+        }
+
         $pdo->commit();
         echo json_encode(['success' => true, 'count' => count($created)]);
     } catch(Exception $e){
@@ -93,8 +142,9 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
 /* ── Page data ───────────────────────────────────────────────── */
 $page_title = 'New Sale';
 
-$minerals = $pdo->query("SELECT * FROM mineral_types ORDER BY name")->fetchAll();
-$buyers   = $pdo->query("SELECT * FROM buyers ORDER BY name")->fetchAll();
+$minerals         = $pdo->query("SELECT * FROM mineral_types ORDER BY name")->fetchAll();
+$buyers           = $pdo->query("SELECT * FROM buyers ORDER BY name")->fetchAll();
+$company_accounts = $pdo->query("SELECT id,account_type,account_name,balance FROM company_accounts WHERE is_active=1 ORDER BY account_type,account_name")->fetchAll(PDO::FETCH_ASSOC);
 
 $special_minerals = [
     ['cat' => 'cassiterite', 'name' => 'Cassiterite', 'id' => null],
@@ -199,6 +249,32 @@ include 'includes/header.php';
         </div>
     </div>
 
+    <!-- Payment -->
+    <div style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--surface,var(--bg))">
+        <div style="font-weight:600;font-size:.82rem;margin-bottom:.85rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">
+            <i class="fas fa-money-bill-wave"></i> Payment
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem">
+            <div id="sale-total-due" style="font-size:.85rem;color:var(--text-muted)">Enter selling prices above to see total due.</div>
+            <button type="button" class="btn btn-secondary" style="padding:.3rem .65rem;font-size:.78rem" onclick="addSalePayRow()"><i class="fas fa-plus"></i> Add Payment</button>
+        </div>
+        <div id="sale-pay-rows" style="display:flex;flex-direction:column;gap:.5rem;margin-bottom:.6rem"></div>
+        <div id="sale-pay-summary" style="display:none;padding:.5rem .75rem;border-radius:6px;background:var(--bg);font-size:.85rem">
+            <div style="display:flex;justify-content:space-between;margin-bottom:.2rem">
+                <span style="color:var(--text-muted)">Total Due:</span>
+                <strong id="spay-due-val" style="font-family:monospace">0.00 FRW</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:.2rem">
+                <span style="color:var(--text-muted)">Total Paid:</span>
+                <strong id="spay-paid-val" style="font-family:monospace;color:#16a34a">0.00 FRW</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:.3rem;margin-top:.3rem">
+                <span style="font-weight:600" id="spay-rem-label">Remaining:</span>
+                <strong id="spay-rem-val" style="font-family:monospace">0.00 FRW</strong>
+            </div>
+        </div>
+    </div>
+
     <!-- Notes -->
     <div style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1.25rem;background:var(--surface,var(--bg))">
         <div class="form-group" style="margin:0">
@@ -222,6 +298,9 @@ include 'includes/header.php';
 <script>
 const costDefaults    = <?= json_encode($cost_defaults) ?>;
 const stockAvailable  = <?= json_encode($stock_available) ?>;
+const companyAccounts = <?= json_encode(array_values($company_accounts)) ?>;
+let salePayRowN       = 0;
+let globalTotalRevenue = 0;
 
 const cardCats    = {};
 const cardNames   = {};
@@ -392,7 +471,7 @@ function updateGlobalSummary() {
     if (!el || !body) return;
 
     const ids = Object.keys(cardSummary);
-    if (ids.length === 0) { el.style.display = 'none'; return; }
+    if (ids.length === 0) { el.style.display = 'none'; globalTotalRevenue = 0; recalcSalePay(); return; }
     el.style.display = '';
 
     let totalRev = 0, totalCost = 0, html = '';
@@ -428,10 +507,85 @@ function updateGlobalSummary() {
     </div>`;
 
     body.innerHTML = html;
+    globalTotalRevenue = totalRev;
+    recalcSalePay();
 }
 
 function onCurrencyChange() {
     Object.keys(cardCats).forEach(id => calcCard(id));
+}
+
+/* ── Payment rows ───────────────────────────────────────────── */
+function buildSaleAcctOpts(method) {
+    const f = companyAccounts.filter(a => a.account_type === method);
+    return f.length
+        ? '<option value="">Select…</option>' + f.map(a =>
+            `<option value="${a.id}">${a.account_name} (${parseFloat(a.balance).toLocaleString('en-US',{minimumFractionDigits:2})} FRW)</option>`).join('')
+        : `<option value="">No ${method} accounts</option>`;
+}
+function addSalePayRow() {
+    const n = ++salePayRowN;
+    const div = document.createElement('div');
+    div.id = 'sale-pay-row-' + n;
+    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:.4rem;align-items:end';
+    div.innerHTML =
+        '<select name="payments['+n+'][method]" onchange="onSalePayRowMethod('+n+')" style="padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface,var(--bg));color:var(--text);font-size:.82rem">' +
+        '<option value="">Method</option><option value="cash">Cash</option><option value="bank">Bank</option><option value="momo">MoMo</option></select>' +
+        '<select name="payments['+n+'][account_id]" id="spay-acct-'+n+'" style="padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface,var(--bg));color:var(--text);font-size:.82rem">' +
+        '<option value="">Account</option></select>' +
+        '<input name="payments['+n+'][amount]" type="text" placeholder="0.00" oninput="recalcSalePay()" style="padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface,var(--bg));color:var(--text);font-size:.82rem;font-family:monospace">' +
+        '<button type="button" onclick="removeSalePayRow('+n+')" style="padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface,var(--bg));color:#dc2626;cursor:pointer;line-height:1;display:'+(salePayRowN>1?'block':'none')+'"><i class="fas fa-trash" style="font-size:.75rem"></i></button>';
+    document.getElementById('sale-pay-rows').appendChild(div);
+    recalcSalePay();
+}
+function removeSalePayRow(n) { document.getElementById('sale-pay-row-'+n)?.remove(); recalcSalePay(); }
+function onSalePayRowMethod(n) {
+    const method = document.querySelector('#sale-pay-rows [name="payments['+n+'][method]"]')?.value;
+    const sel = document.getElementById('spay-acct-'+n);
+    if (!sel || !method) return;
+    sel.innerHTML = buildSaleAcctOpts(method);
+    recalcSalePay();
+}
+function recalcSalePay() {
+    let totalPaid = 0;
+    document.querySelectorAll('#sale-pay-rows input[type="text"]').forEach(inp => { totalPaid += parseFloat(inp.value) || 0; });
+
+    const dueLbl = document.getElementById('sale-total-due');
+    const sumEl  = document.getElementById('sale-pay-summary');
+
+    if (dueLbl) {
+        dueLbl.innerHTML = globalTotalRevenue > 0
+            ? 'Total due: <strong style="color:var(--text)">' + globalTotalRevenue.toLocaleString('en-US',{minimumFractionDigits:2}) + ' FRW</strong> — leave unpaid amount as buyer credit.'
+            : 'Enter selling prices above to see total due.';
+    }
+
+    const hasDue = globalTotalRevenue > 0 || totalPaid > 0;
+    if (sumEl) sumEl.style.display = hasDue ? '' : 'none';
+
+    const dueVal  = document.getElementById('spay-due-val');
+    const paidVal = document.getElementById('spay-paid-val');
+    const remVal  = document.getElementById('spay-rem-val');
+    const remLbl  = document.getElementById('spay-rem-label');
+
+    if (dueVal)  dueVal.textContent  = globalTotalRevenue.toLocaleString('en-US',{minimumFractionDigits:2}) + ' FRW';
+    if (paidVal) paidVal.textContent = totalPaid.toLocaleString('en-US',{minimumFractionDigits:2}) + ' FRW';
+
+    const rem = globalTotalRevenue - totalPaid;
+    if (remVal && remLbl) {
+        if (rem > 0.005) {
+            remLbl.textContent  = 'Credit (buyer owes):';
+            remVal.style.color  = '#dc2626';
+            remVal.textContent  = rem.toLocaleString('en-US',{minimumFractionDigits:2}) + ' FRW';
+        } else if (rem < -0.005) {
+            remLbl.textContent  = 'Advance consumed:';
+            remVal.style.color  = '#7c3aed';
+            remVal.textContent  = Math.abs(rem).toLocaleString('en-US',{minimumFractionDigits:2}) + ' FRW';
+        } else {
+            remLbl.textContent  = 'Status:';
+            remVal.style.color  = '#16a34a';
+            remVal.textContent  = 'Fully paid ✓';
+        }
+    }
 }
 
 /* ── Submit ─────────────────────────────────────────────────── */

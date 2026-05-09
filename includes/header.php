@@ -30,9 +30,13 @@
         <a href="sales.php"        class="nav-item <?= $cur==='sales'||$cur==='new-sales'   ?'active':'' ?>"><i class="fas fa-chart-line"></i> Sales</a>
         <a href="buyers.php"       class="nav-item <?= $cur==='buyers'       ?'active':'' ?>"><i class="fas fa-handshake"></i> Buyers</a>
                 <a href="suppliers.php"    class="nav-item <?= $cur==='suppliers'    ?'active':'' ?>"><i class="fas fa-building"></i> Suppliers</a>
-        <a href="loans.php"        class="nav-item <?= $cur==='loans'        ?'active':'' ?>"><i class="fas fa-hand-holding-dollar"></i> Loans</a>
+        <a href="loans-payable.php"    class="nav-item <?= $cur==='loans-payable'    ?'active':'' ?>"><i class="fas fa-arrow-up"></i> Loan Payable</a>
+        <a href="loans-receivable.php" class="nav-item <?= $cur==='loans-receivable' ?'active':'' ?>"><i class="fas fa-arrow-down"></i> Loan Receivable</a>
+        <a href="accounts.php"     class="nav-item <?= $cur==='accounts'     ?'active':'' ?>"><i class="fas fa-building-columns"></i> Accounts</a>
+        <a href="expenses.php"     class="nav-item <?= $cur==='expenses'     ?'active':'' ?>"><i class="fas fa-receipt"></i> Expenses</a>
 
         <div class="nav-section-label" style="margin-top:.5rem">Analytics</div>
+        <a href="journal.php"      class="nav-item <?= $cur==='journal'      ?'active':'' ?>"><i class="fas fa-book-open"></i> Journal</a>
         <a href="reports.php"      class="nav-item <?= $cur==='reports'      ?'active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a>
         <a href="audit_log.php"    class="nav-item <?= $cur==='audit_log'    ?'active':'' ?>"><i class="fas fa-scroll"></i> Audit Log</a>
 

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 30, 2026 at 03:59 PM
+-- Generation Time: May 09, 2026 at 10:01 PM
 -- Server version: 10.4.28-MariaDB
 -- PHP Version: 8.2.4
 
@@ -20,6 +20,25 @@ SET time_zone = "+00:00";
 --
 -- Database: `minerals_depot`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `account_transactions`
+--
+
+CREATE TABLE `account_transactions` (
+  `id` int(11) NOT NULL,
+  `account_id` int(11) NOT NULL,
+  `txn_type` enum('credit','debit') NOT NULL,
+  `amount` decimal(15,2) NOT NULL,
+  `balance_after` decimal(15,2) NOT NULL,
+  `reference_type` varchar(50) DEFAULT NULL,
+  `reference_id` int(11) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -74,6 +93,81 @@ CREATE TABLE `buyers` (
   `phone` varchar(50) DEFAULT NULL,
   `email` varchar(100) DEFAULT NULL,
   `address` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `buyers`
+--
+
+INSERT INTO `buyers` (`id`, `buyer_code`, `name`, `contact`, `phone`, `email`, `address`, `created_at`) VALUES
+(1, 'BUY-20260430-810', 'Abc minerals', 'Kamarade james', '0789402645', '', 'kigali', '2026-04-30 14:08:46'),
+(2, 'BUY-20260508-970', 'Albert supply', 'Muhizi gaston', '+2507890471731', '', 'KG 59 St +54', '2026-05-08 13:40:56');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `buyer_loans`
+--
+
+CREATE TABLE `buyer_loans` (
+  `id` int(11) NOT NULL,
+  `buyer_id` int(11) NOT NULL,
+  `sale_id` int(11) DEFAULT NULL,
+  `type` enum('loan','repayment') NOT NULL,
+  `amount` decimal(15,2) NOT NULL,
+  `notes` text DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `payment_method` enum('cash','bank','momo') DEFAULT NULL,
+  `account_id` int(11) DEFAULT NULL,
+  `is_advance` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `company_accounts`
+--
+
+CREATE TABLE `company_accounts` (
+  `id` int(11) NOT NULL,
+  `account_type` enum('cash','bank','momo') NOT NULL,
+  `account_name` varchar(100) NOT NULL,
+  `balance` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `notes` text DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `company_accounts`
+--
+
+INSERT INTO `company_accounts` (`id`, `account_type`, `account_name`, `balance`, `notes`, `is_active`, `created_by`, `created_at`, `updated_at`) VALUES
+(1, 'cash', 'Cash box', 60125.00, '', 1, 1, '2026-05-05 10:48:51', '2026-05-09 18:38:10'),
+(2, 'momo', 'Mobile Money', 900000.00, '', 1, 1, '2026-05-05 10:49:54', '2026-05-09 19:57:08'),
+(3, 'bank', 'Bk', 1458000.00, '', 1, 1, '2026-05-05 10:50:15', '2026-05-09 19:32:50'),
+(4, 'bank', 'Equity', 14850000.00, '', 1, 1, '2026-05-05 10:51:00', '2026-05-09 19:37:54');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `expenses`
+--
+
+CREATE TABLE `expenses` (
+  `id` int(11) NOT NULL,
+  `expense_date` date NOT NULL,
+  `category` varchar(100) NOT NULL DEFAULT 'Other',
+  `description` varchar(255) NOT NULL,
+  `amount` decimal(15,2) NOT NULL,
+  `payment_method` enum('cash','bank','momo','mixed') NOT NULL DEFAULT 'cash',
+  `account_id` int(11) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -156,7 +250,25 @@ CREATE TABLE `purchase_details` (
   `take_home` decimal(15,2) DEFAULT NULL,
   `loan_action` enum('give','deduct','none') NOT NULL DEFAULT 'none',
   `loan_amount` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `amount_paid` decimal(15,2) DEFAULT NULL,
   `comment` text DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `purchase_payments`
+--
+
+CREATE TABLE `purchase_payments` (
+  `id` int(11) NOT NULL,
+  `batch_id` int(11) NOT NULL,
+  `supplier_id` int(11) NOT NULL,
+  `payment_method` enum('cash','bank','momo') NOT NULL,
+  `account_id` int(11) DEFAULT NULL,
+  `amount` decimal(15,2) NOT NULL,
   `created_by` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -221,6 +333,17 @@ CREATE TABLE `suppliers` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `suppliers`
+--
+
+INSERT INTO `suppliers` (`id`, `supplier_code`, `name`, `contact_person`, `phone`, `email`, `license_number`, `address`, `created_at`) VALUES
+(1, 'SUP-20260430-662', 'Niyonsaba Gilbert', 'Niyonsaba Gilbert', '+250789047173', '', '', 'KG 59 St +54', '2026-04-30 14:07:48'),
+(2, 'SUP-20260430-653', 'bamukunde amina', '', '07890471732', '', '', '', '2026-04-30 14:08:08'),
+(3, 'SUP-20260506-115', 'kwizera elyse', 'kwizera elyse', '+250789047173', '', '', 'KG 59 St +54', '2026-05-06 10:39:33'),
+(4, 'SUP-20260509-227', 'muhozi ltd', 'James muvara', '+250789047173', '', '', 'KG 59 St +54', '2026-05-09 17:17:19'),
+(5, 'SUP-20260509-675', 'Mizero mining', 'Mizero oda', '+250789047171', '', '', 'KG 59 St +54', '2026-05-09 19:05:12');
+
 -- --------------------------------------------------------
 
 --
@@ -235,7 +358,10 @@ CREATE TABLE `supplier_loans` (
   `amount` decimal(15,2) NOT NULL,
   `notes` text DEFAULT NULL,
   `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `is_deferred` tinyint(1) NOT NULL DEFAULT 0,
+  `payment_method` enum('cash','bank','momo') DEFAULT NULL,
+  `account_id` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -312,6 +438,13 @@ INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `email`, `role`,
 --
 
 --
+-- Indexes for table `account_transactions`
+--
+ALTER TABLE `account_transactions`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `account_id` (`account_id`);
+
+--
 -- Indexes for table `audit_log`
 --
 ALTER TABLE `audit_log`
@@ -333,6 +466,28 @@ ALTER TABLE `batches`
 --
 ALTER TABLE `buyers`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `buyer_loans`
+--
+ALTER TABLE `buyer_loans`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `buyer_id` (`buyer_id`),
+  ADD KEY `sale_id` (`sale_id`);
+
+--
+-- Indexes for table `company_accounts`
+--
+ALTER TABLE `company_accounts`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `expenses`
+--
+ALTER TABLE `expenses`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `expense_date` (`expense_date`),
+  ADD KEY `created_by` (`created_by`);
 
 --
 -- Indexes for table `inventory`
@@ -364,6 +519,14 @@ ALTER TABLE `purchase_details`
   ADD KEY `supplier_id` (`supplier_id`),
   ADD KEY `mineral_id` (`mineral_id`),
   ADD KEY `purchase_date` (`purchase_date`);
+
+--
+-- Indexes for table `purchase_payments`
+--
+ALTER TABLE `purchase_payments`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `batch_id` (`batch_id`),
+  ADD KEY `supplier_id` (`supplier_id`);
 
 --
 -- Indexes for table `sales`
@@ -423,6 +586,12 @@ ALTER TABLE `users`
 --
 
 --
+-- AUTO_INCREMENT for table `account_transactions`
+--
+ALTER TABLE `account_transactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `audit_log`
 --
 ALTER TABLE `audit_log`
@@ -438,6 +607,24 @@ ALTER TABLE `batches`
 -- AUTO_INCREMENT for table `buyers`
 --
 ALTER TABLE `buyers`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `buyer_loans`
+--
+ALTER TABLE `buyer_loans`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `company_accounts`
+--
+ALTER TABLE `company_accounts`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `expenses`
+--
+ALTER TABLE `expenses`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -465,6 +652,12 @@ ALTER TABLE `purchase_details`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `purchase_payments`
+--
+ALTER TABLE `purchase_payments`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `sales`
 --
 ALTER TABLE `sales`
@@ -480,7 +673,7 @@ ALTER TABLE `sale_details`
 -- AUTO_INCREMENT for table `suppliers`
 --
 ALTER TABLE `suppliers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `supplier_loans`

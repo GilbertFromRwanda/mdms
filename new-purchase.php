@@ -22,10 +22,24 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
         $loan_action_map = ['loan' => 'give', 'repayment' => 'deduct'];
         $loan_action = $loan_action_map[$loan_type] ?? 'none';
 
+        // Pre-sum all payment rows to get total amount paid
+        $payments_post  = $_POST['payments'] ?? [];
+        $total_amount_paid = 0;
+        $valid_payments = [];
+        foreach($payments_post as $p){
+            $pmethod = in_array($p['method'] ?? '', ['cash','bank','momo']) ? $p['method'] : null;
+            $pamount = floatval($p['amount'] ?? 0);
+            $pacct   = intval($p['account_id'] ?? 0);
+            if(!$pmethod || $pamount <= 0) continue;
+            $total_amount_paid += $pamount;
+            $valid_payments[] = ['method' => $pmethod, 'account_id' => $pacct, 'amount' => $pamount];
+        }
+
         $pdo->beginTransaction();
 
         $created           = [];
         $first_batch_db_id = null;
+        $total_take_home   = 0;
         foreach($minerals_post as $mid => $mdata){
             $batch_id = 'BATCH-'.date('Ymd').'-'.rand(1000,9999);
             $qty      = floatval($mdata['quantity']     ?? 0);
@@ -54,17 +68,20 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
 
             // Store full calculation detail
             $fn = fn($k) => ($mdata[$k] ?? '') !== '' ? floatval($mdata[$k]) : null;
+            $mineral_take_home = $fn('take_home') ?? 0;
+            $total_take_home  += $mineral_take_home;
+
             $pdo->prepare("
                 INSERT INTO purchase_details
                   (batch_id,mineral_id,supplier_id,purchase_date,currency_used,qty,
                    sample,rwf_rate,fees_1,fees_2,tag,rma,rra,lma,tmt,tantal,
-                   unit_price,take_home,loan_action,loan_amount,comment,created_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   unit_price,take_home,loan_action,loan_amount,amount_paid,comment,created_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ")->execute([
                 $lastId,$mid,$supplier_id,$recv_date,$currency,$qty,
                 $fn('sample'),$fn('rwf_rate'),$fn('fees_1'),$fn('fees_2'),
                 $fn('tag'),$fn('rma'),$fn('rra'),$fn('lma'),$fn('tmt'),$fn('tantal'),
-                $pu,$fn('take_home'),$loan_action,$loan_amount,$notes,$_SESSION['user_id']
+                $pu,$mineral_take_home,$loan_action,$loan_amount,$total_amount_paid,$notes,$_SESSION['user_id']
             ]);
 
             $row = $pdo->prepare("SELECT mt.name AS mineral_name, s.name AS supplier_name FROM mineral_types mt, suppliers s WHERE mt.id=? AND s.id=?");
@@ -82,18 +99,84 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
 
         if(in_array($loan_type, ['loan','repayment']) && $loan_amount > 0){
             if($loan_type === 'repayment'){
-                $cb = $pdo->prepare("SELECT COALESCE(SUM(CASE WHEN type='loan' THEN amount ELSE -amount END),0) FROM supplier_loans WHERE supplier_id=?");
+                $cb = $pdo->prepare("SELECT COALESCE(SUM(CASE WHEN type='loan' AND is_deferred=0 THEN amount WHEN type='repayment' AND is_deferred=0 THEN -amount ELSE 0 END),0) FROM supplier_loans WHERE supplier_id=?");
                 $cb->execute([$supplier_id]);
                 $cur_bal = (float)$cb->fetchColumn();
                 if($cur_bal <= 0)
-                    throw new Exception('This supplier has no outstanding loan to repay.');
+                    throw new Exception('This supplier has no outstanding advance to repay.');
                 if($loan_amount > $cur_bal)
-                    throw new Exception('Repayment of '.number_format($loan_amount,2).' FRW exceeds outstanding balance of '.number_format($cur_bal,2).' FRW.');
+                    throw new Exception('Repayment of '.number_format($loan_amount,2).' FRW exceeds advance balance of '.number_format($cur_bal,2).' FRW.');
             }
             $pdo->prepare("
-                INSERT INTO supplier_loans (supplier_id,batch_id,type,amount,notes,created_by)
-                VALUES (?,?,?,?,?,?)
+                INSERT INTO supplier_loans (supplier_id,batch_id,type,amount,notes,is_deferred,created_by)
+                VALUES (?,?,?,?,?,0,?)
             ")->execute([$supplier_id,$first_batch_db_id,$loan_type,$loan_amount,$loan_notes,$_SESSION['user_id']]);
+        }
+
+        // Auto-record loan payable when supplier was underpaid
+        $net_to_pay   = $total_take_home
+                        + ($loan_type === 'loan'      ? $loan_amount : 0)
+                        - ($loan_type === 'repayment' ? $loan_amount : 0);
+        $loan_payable = round($net_to_pay - $total_amount_paid, 2);
+        if($loan_payable > 0.005){
+            // Underpaid — record as deferred mineral payment (we owe supplier)
+            $pdo->prepare("
+                INSERT INTO supplier_loans (supplier_id,batch_id,type,amount,notes,is_deferred,created_by)
+                VALUES (?,?,'loan',?,?,1,?)
+            ")->execute([$supplier_id,$first_batch_db_id,$loan_payable,$notes,$_SESSION['user_id']]);
+        } elseif($loan_payable < -0.005){
+            // Overpaid — first reduce existing deferred debt, then record any remainder as advance
+            $overpaid = round(-$loan_payable, 2);
+            $defStmt  = $pdo->prepare("SELECT COALESCE(SUM(CASE WHEN type='loan' AND is_deferred=1 THEN amount WHEN type='repayment' AND is_deferred=1 THEN -amount ELSE 0 END),0) FROM supplier_loans WHERE supplier_id=?");
+            $defStmt->execute([$supplier_id]);
+            $cur_deferred = (float)$defStmt->fetchColumn();
+            if($cur_deferred > 0.005){
+                $deferred_repay = min($overpaid, round($cur_deferred, 2));
+                $pdo->prepare("
+                    INSERT INTO supplier_loans (supplier_id,batch_id,type,amount,notes,is_deferred,created_by)
+                    VALUES (?,?,'repayment',?,?,1,?)
+                ")->execute([$supplier_id,$first_batch_db_id,$deferred_repay,'Offset from overpayment',$_SESSION['user_id']]);
+                $overpaid = round($overpaid - $deferred_repay, 2);
+            }
+            if($overpaid > 0.005){
+                $pdo->prepare("
+                    INSERT INTO supplier_loans (supplier_id,batch_id,type,amount,notes,is_deferred,created_by)
+                    VALUES (?,?,'loan',?,?,0,?)
+                ")->execute([$supplier_id,$first_batch_db_id,$overpaid,'Advance from overpayment',$_SESSION['user_id']]);
+            }
+        }
+
+        // Debit each payment account and record in purchase_payments
+        $stmtDebit = $pdo->prepare("SELECT balance, account_name FROM company_accounts WHERE id=? AND is_active=1 FOR UPDATE");
+        $stmtUpdBal = $pdo->prepare("UPDATE company_accounts SET balance=? WHERE id=?");
+        $stmtAcctTxn = $pdo->prepare("
+            INSERT INTO account_transactions
+              (account_id,txn_type,amount,balance_after,reference_type,reference_id,description,created_by)
+            VALUES (?,'debit',?,?,'purchase',?,?,?)
+        ");
+        $stmtPayment = $pdo->prepare("
+            INSERT INTO purchase_payments (batch_id,supplier_id,payment_method,account_id,amount,created_by)
+            VALUES (?,?,?,?,?,?)
+        ");
+        foreach($valid_payments as $vp){
+            $stmtPayment->execute([
+                $first_batch_db_id, $supplier_id,
+                $vp['method'], $vp['account_id'] ?: null,
+                $vp['amount'], $_SESSION['user_id']
+            ]);
+            if($vp['account_id']){
+                $stmtDebit->execute([$vp['account_id']]);
+                $acct = $stmtDebit->fetch();
+                if(!$acct) throw new Exception("Payment account #{$vp['account_id']} not found or inactive.");
+                if($acct['balance'] < $vp['amount'])
+                    throw new Exception("Insufficient balance in \"{$acct['account_name']}\". Available: ".number_format($acct['balance'],2)." FRW, requested: ".number_format($vp['amount'],2)." FRW.");
+                $newBal = round($acct['balance'] - $vp['amount'], 2);
+                $stmtUpdBal->execute([$newBal, $vp['account_id']]);
+                $stmtAcctTxn->execute([
+                    $vp['account_id'], $vp['amount'], $newBal,
+                    $first_batch_db_id, 'Supplier payment', $_SESSION['user_id']
+                ]);
+            }
         }
 
         $pdo->commit();
@@ -112,10 +195,17 @@ $page_title = 'New Purchase';
 
 $minerals  = $pdo->query("SELECT * FROM mineral_types ORDER BY name")->fetchAll();
 $suppliers = $pdo->query("SELECT * FROM suppliers ORDER BY name")->fetchAll();
+$company_accounts = $pdo->query("SELECT id,account_type,account_name,balance FROM company_accounts WHERE is_active=1 ORDER BY account_type,account_name")->fetchAll();
 
-$loan_bal_raw  = $pdo->query("SELECT supplier_id, COALESCE(SUM(CASE WHEN type='loan' THEN amount ELSE -amount END),0) AS balance FROM supplier_loans GROUP BY supplier_id")->fetchAll(PDO::FETCH_ASSOC);
+/* Advance balance: only non-deferred records (matches what backend allows for repayment) */
+$loan_bal_raw  = $pdo->query("SELECT supplier_id, COALESCE(SUM(CASE WHEN type='loan' THEN amount ELSE -amount END),0) AS balance FROM supplier_loans WHERE is_deferred=0 GROUP BY supplier_id")->fetchAll(PDO::FETCH_ASSOC);
 $loan_balances = [];
 foreach($loan_bal_raw as $lb) $loan_balances[(int)$lb['supplier_id']] = (float)$lb['balance'];
+
+/* Deferred balance: outstanding mineral debt (loans minus payments already made) */
+$deferred_bal_raw = $pdo->query("SELECT supplier_id, COALESCE(SUM(CASE WHEN type='loan' AND is_deferred=1 THEN amount WHEN type='repayment' AND is_deferred=1 THEN -amount ELSE 0 END),0) AS deferred FROM supplier_loans GROUP BY supplier_id")->fetchAll(PDO::FETCH_ASSOC);
+$deferred_balances = [];
+foreach($deferred_bal_raw as $db) $deferred_balances[(int)$db['supplier_id']] = (float)$db['deferred'];
 
 $special_minerals = [
     ['cat' => 'cassiterite', 'name' => 'Cassiterite', 'id' => null],
@@ -150,12 +240,16 @@ include 'includes/header.php';
         <div class="form-grid form-grid-2">
             <div class="form-group">
                 <label>Supplier</label>
-                <select name="supplier_id" required>
+                <select name="supplier_id" required onchange="onSupplierChange(this.value)">
                     <option value="">— Select supplier —</option>
                     <?php foreach($suppliers as $s): ?>
                     <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div id="deferred-balance-info" style="display:none;margin-top:.45rem;padding:.4rem .65rem;border-radius:6px;font-size:.8rem;font-weight:600;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa">
+                    <i class="fas fa-hourglass-half"></i> <span id="deferred-balance-text"></span>
+                    &nbsp;·&nbsp;<a href="#" id="deferred-balance-link" style="color:#ea580c;font-size:.75rem">View details</a>
+                </div>
             </div>
             <div class="form-group">
                 <label>Received Date</label>
@@ -195,33 +289,77 @@ include 'includes/header.php';
                 <div id="global-summary-body"></div>
             </div>
         </div>
-    </div>
 
-    <!-- Loan / Repayment -->
-    <div id="loan-section" style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--surface,var(--bg));display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
-            <span style="font-weight:600;font-size:.88rem"><i class="fas fa-hand-holding-dollar" style="margin-right:.35rem"></i>Loan / Repayment</span>
-            <span id="loan-balance-badge" style="font-size:.78rem;padding:.2rem .65rem;border-radius:12px;font-weight:600"></span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem .9rem">
-            <div class="form-group" style="margin:0">
-                <label>Action</label>
-                <select name="loan_type" id="loan-type-select" onchange="toggleLoanFields()">
-                    <option value="">— No action —</option>
-                    <option value="loan">Give / Increase Loan</option>
-                    <option value="repayment">Deduct Repayment</option>
-                </select>
+        <!-- Loan / Repayment -->
+        <div id="loan-section" style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-top:.75rem;background:var(--surface,var(--bg));display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+                <span style="font-weight:600;font-size:.88rem"><i class="fas fa-hand-holding-dollar" style="margin-right:.35rem"></i>Loan / Repayment</span>
+                <span id="loan-balance-badge" style="font-size:.78rem;padding:.2rem .65rem;border-radius:12px;font-weight:600"></span>
             </div>
-            <div class="form-group" id="loan-amount-group" style="margin:0;display:none">
-                <label>Amount (FRW)</label>
-                <input type="text" name="loan_amount" id="loan-amount" placeholder="0" oninput="checkBatchLoanLimit();updateGlobalSummary()">
-                <div id="batch-loan-warning" style="display:none;margin-top:.35rem;font-size:.8rem;color:#dc2626">
-                    <i class="fas fa-triangle-exclamation"></i> <span id="batch-loan-warning-text"></span>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem .9rem">
+                <div class="form-group" style="margin:0">
+                    <label>Action</label>
+                    <select name="loan_type" id="loan-type-select" onchange="toggleLoanFields()">
+                        <option value="">— No action —</option>
+                        <option value="loan">Give / Increase Loan</option>
+                        <option value="repayment">Deduct Repayment</option>
+                    </select>
+                </div>
+                <div class="form-group" id="loan-amount-group" style="margin:0;display:none">
+                    <label>Amount (FRW)</label>
+                    <input type="text" name="loan_amount" id="loan-amount" placeholder="0" oninput="checkBatchLoanLimit();updateGlobalSummary()">
+                    <div id="batch-loan-warning" style="display:none;margin-top:.35rem;font-size:.8rem;color:#dc2626">
+                        <i class="fas fa-triangle-exclamation"></i> <span id="batch-loan-warning-text"></span>
+                    </div>
+                </div>
+                <div class="form-group" id="loan-notes-group" style="margin:0;display:none">
+                    <label>Loan Notes</label>
+                    <input type="text" name="loan_notes" placeholder="Optional…">
                 </div>
             </div>
-            <div class="form-group" id="loan-notes-group" style="margin:0;display:none">
-                <label>Loan Notes</label>
-                <input type="text" name="loan_notes" placeholder="Optional…">
+        </div>
+
+        <!-- Multi-payment section -->
+        <div id="payment-tracking" style="display:none;margin-top:.75rem;border:1px solid var(--border);border-radius:8px;padding:1rem;background:var(--surface,var(--bg))">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+                <span style="font-weight:600;font-size:.82rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">
+                    <i class="fas fa-money-bill-wave"></i> Payment Details
+                </span>
+                <button type="button" onclick="addPaymentRow()" style="background:none;border:1px dashed var(--border);cursor:pointer;color:var(--primary);font-size:.8rem;padding:.25rem .65rem;border-radius:6px;font-weight:600">
+                    <i class="fas fa-plus"></i> Add Method
+                </button>
+            </div>
+
+            <!-- Column headers -->
+            <div style="display:grid;grid-template-columns:140px 1fr 130px 130px 32px;gap:.4rem;margin-bottom:.3rem;padding:0 .1rem">
+                <span style="font-size:.75rem;font-weight:600;color:var(--text-muted)">Method</span>
+                <span style="font-size:.75rem;font-weight:600;color:var(--text-muted)">Account</span>
+                <span style="font-size:.75rem;font-weight:600;color:var(--text-muted)">Acct Balance</span>
+                <span style="font-size:.75rem;font-weight:600;color:var(--text-muted)">Amount Paid (FRW)</span>
+                <span></span>
+            </div>
+
+            <div id="payment-rows"></div>
+
+            <!-- Totals -->
+            <div style="border-top:1px solid var(--border);margin-top:.6rem;padding-top:.6rem;display:flex;flex-direction:column;gap:.3rem;align-items:flex-end">
+                <div style="display:flex;gap:1.5rem;align-items:center;font-size:.88rem">
+                    <span style="color:var(--text-muted)">Total Paid</span>
+                    <span id="total-paid-display" style="font-family:monospace;font-weight:700;min-width:140px;text-align:right">0.00 FRW</span>
+                </div>
+                <div style="display:flex;gap:1.5rem;align-items:center;font-size:.88rem">
+                    <span id="loan-payable-label" style="color:var(--text-muted)">Loan Payable</span>
+                    <span id="loan-payable-display" style="font-family:monospace;font-weight:700;color:var(--text-muted);min-width:140px;text-align:right">—</span>
+                </div>
+            </div>
+            <div id="advance-offset-warn" style="display:none;margin-top:.6rem;padding:.55rem .75rem;border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;font-size:.82rem;color:#92400e">
+                <i class="fas fa-triangle-exclamation" style="color:#f59e0b;margin-right:.35rem"></i>
+                <span id="advance-offset-warn-text"></span>
+                &nbsp;·&nbsp;
+                <a href="#" style="color:#ea580c;font-weight:600;text-decoration:none"
+                   onclick="event.preventDefault();document.getElementById('loan-type-select').value='repayment';toggleLoanFields();document.getElementById('loan-amount').focus()">
+                   Apply it now
+                </a>
             </div>
         </div>
     </div>
@@ -247,18 +385,37 @@ include 'includes/header.php';
 </form>
 
 <script>
-const loanBalances = <?= json_encode($loan_balances) ?>;
+const loanBalances      = <?= json_encode($loan_balances) ?>;
+const deferredBalances  = <?= json_encode($deferred_balances) ?>;
+const companyAccounts   = <?= json_encode(array_values($company_accounts)) ?>;
 
 const cardCats    = {};
 const cardNames   = {};
 const cardSummary = {};
+let currentNetToPay = 0;
 
 const CARD_COLORS = { cassiterite: '#3b82f6', coltan: '#8b5cf6', wolframite: '#10b981' };
 
-document.querySelector('[name="supplier_id"]').addEventListener('change', function () {
-    updateLoanBadge(this.value);
+function onSupplierChange(suppId) {
+    updateLoanBadge(suppId);
+    updateDeferredBadge(suppId);
     checkBatchLoanLimit();
-});
+}
+
+function updateDeferredBadge(suppId) {
+    const info    = document.getElementById('deferred-balance-info');
+    const textEl  = document.getElementById('deferred-balance-text');
+    const linkEl  = document.getElementById('deferred-balance-link');
+    if (!suppId) { info.style.display = 'none'; return; }
+    const def = deferredBalances[suppId] || 0;
+    if (def > 0) {
+        textEl.textContent = 'Deferred Mineral Payments: ' + def.toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' FRW owed to this supplier';
+        linkEl.href = 'loans-payable.php?supplier_id=' + suppId;
+        info.style.display = '';
+    } else {
+        info.style.display = 'none';
+    }
+}
 
 function updateLoanBadge(suppId) {
     const section = document.getElementById('loan-section');
@@ -324,7 +481,7 @@ function buildCard(id, name, cat) {
 
     if (cat === 'cassiterite') {
         fields = `
-            <div class="form-group"><label>LMA Price (RWF)</label><input type="text" id="c${id}-lma" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>LME Price (RWF)</label><input type="text" id="c${id}-lma" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Quantity (kg)</label><input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Sample (%)</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RWF Rate</label><input type="text" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
@@ -449,7 +606,7 @@ function calcCard(id) {
         const rma     = parseFloat(document.getElementById('c'+id+'-rma').value)     || 0;
         rwfRateCard   = rwfRate;
 
-        const rra      = (((lma * sample) / 100) - 800) * 0.03;
+        const rra      = (((((lma * sample) / 100) - 800) * 0.03)/1000)*rwfRate;
         const usd      = ((((lma - fees1) * sample) / 100) - fees2) / 1000;
         const rwf      = usd * rwfRate;
         const up       = rwf - tag - rma - rra;
@@ -464,7 +621,7 @@ function calcCard(id) {
             ['× RWF Rate',                   rwfRate.toLocaleString()],
             ['= RWF',                        fmtRWF(rwf), true],
             null,
-            ['RRA = (LMA×sample/100 − 800) × 3%', fmtRWF(rra)],
+            ['RRA = (((LMA×sample/100 − 800) × 3%)/1000)×rwfRate', fmtRWF(rra)],
             ['− Tag',                        fmtRWF(tag)],
             ['− RMA',                        fmtRWF(rma)],
             ['− RRA',                        fmtRWF(rra)],
@@ -515,7 +672,7 @@ function calcCard(id) {
         rwfRateCard   = rwfRate;
 
         const rwf_tmt      = tmt * rwfRate;
-        const global_total = rwf_tmt * sample;
+        const global_total = (rwf_tmt * sample)/1000;
         const rra_rwf      = global_total * 0.03;
         const up           = global_total - tag - rma - rra_rwf;
         unitPrice = up;
@@ -577,7 +734,14 @@ function updateGlobalSummary() {
     if (!el || !body) return;
 
     const ids = Object.keys(cardSummary);
-    if (ids.length === 0) { el.style.display = 'none'; return; }
+    if (ids.length === 0) {
+        el.style.display = 'none';
+        const pt = document.getElementById('payment-tracking');
+        if (pt) pt.style.display = 'none';
+        currentNetToPay = 0;
+        return;
+    }
+    const wasHidden = el.style.display === 'none';
     el.style.display = '';
 
     const currency  = document.getElementById('currency-select')?.value || 'FRW';
@@ -629,11 +793,233 @@ function updateGlobalSummary() {
         <span style="font-family:monospace;font-weight:700;font-size:1.05rem;color:var(--primary)">${fmtAmt(net)}</span>
     </div>`;
 
+    const suppId2     = document.querySelector('[name="supplier_id"]')?.value || '';
+    const curDeferred = parseFloat(deferredBalances[suppId2] || 0);
+    const curAdvance  = parseFloat(loanBalances[suppId2] || 0);
+    const curNet      = curDeferred - curAdvance;
+    if (Math.abs(curNet) > 0.005 || curDeferred > 0.005 || curAdvance > 0.005) {
+        const netOwed    = curNet > 0.005;
+        const netBg      = netOwed ? '#fff7ed' : '#eff6ff';
+        const netBorder  = netOwed ? '#fed7aa' : '#bfdbfe';
+        const netColor   = netOwed ? '#92400e'  : '#1d4ed8';
+        const netIcon    = netOwed ? 'hourglass-half' : 'hand-holding-dollar';
+        const netLabel   = netOwed ? 'Net Owed to Supplier' : 'Net Supplier Owes Us';
+        const netAmt     = Math.abs(curNet);
+        html += `<div style="margin-top:.65rem;padding:.55rem .75rem;border-radius:6px;background:${netBg};border:1px solid ${netBorder}">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:.82rem;color:${netColor};margin-bottom:.25rem">
+                <span><i class="fas fa-${netIcon}"></i> ${netLabel}</span>
+                <span style="font-family:monospace;font-weight:700">${netAmt.toLocaleString('en-US',{minimumFractionDigits:2})} FRW</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:.82rem;color:${netColor}">
+                <span style="opacity:.85"><i class="fas fa-arrow-right"></i> After This Save</span>
+                <span id="projected-net-val" style="font-family:monospace;font-weight:700">—</span>
+            </div>
+        </div>`;
+    }
+
     body.innerHTML = html;
+
+    currentNetToPay = net;
+    const payTrack = document.getElementById('payment-tracking');
+    if (payTrack) {
+        const firstShow = payTrack.style.display === 'none';
+        payTrack.style.display = '';
+        if (firstShow && document.getElementById('payment-rows').children.length === 0) {
+            addPaymentRow('cash');
+        }
+    }
+    recalcPayments();
 }
 
 function onCurrencyChange() {
     Object.keys(cardCats).forEach(id => calcCard(id));
+}
+
+/* ── Multi-payment rows ─────────────────────────────────────── */
+let payRowCnt = 0;
+const METHOD_LABELS = { cash: 'Cash', bank: 'Bank Transfer', momo: 'Mobile Money' };
+
+function buildAccountOptions(method) {
+    const filtered = companyAccounts.filter(a => a.account_type === method);
+    if (!filtered.length) return '<option value="">— No accounts —</option>';
+    let html = '<option value="">— Select account —</option>';
+    filtered.forEach(a => {
+        html += `<option value="${a.id}" data-balance="${a.balance}">${esc(a.account_name)}</option>`;
+    });
+    return html;
+}
+
+function addPaymentRow(defaultMethod) {
+    const n   = ++payRowCnt;
+    const row = document.createElement('div');
+    row.id    = 'prow-' + n;
+    row.style.cssText = 'display:grid;grid-template-columns:140px 1fr 130px 130px 32px;gap:.4rem .4rem;align-items:center;margin-bottom:.4rem';
+
+    const methodOpts = ['cash','bank','momo'].map(m =>
+        `<option value="${m}"${m === defaultMethod ? ' selected' : ''}>${METHOD_LABELS[m]}</option>`
+    ).join('');
+
+    const initMethod = defaultMethod || 'cash';
+    const acctOpts   = buildAccountOptions(initMethod);
+
+    row.innerHTML = `
+        <select name="payments[${n}][method]" id="prow-${n}-method"
+                style="width:100%;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface,var(--bg));color:var(--text);font-size:.83rem"
+                onchange="onRowMethodChange(${n})">
+            ${methodOpts}
+        </select>
+        <select name="payments[${n}][account_id]" id="prow-${n}-acct"
+                style="width:100%;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface,var(--bg));color:var(--text);font-size:.83rem"
+                onchange="onRowAcctChange(${n})">
+            ${acctOpts}
+        </select>
+        <div id="prow-${n}-bal"
+             style="padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;font-family:monospace;font-size:.8rem;font-weight:600;color:var(--text-muted);background:var(--border)22;text-align:right">—</div>
+        <input type="text" name="payments[${n}][amount]" id="prow-${n}-amt"
+               placeholder="0.00"
+               style="width:100%;padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface,var(--bg));color:var(--text);font-size:.83rem;text-align:right"
+               oninput="checkRowBalance(${n});recalcPayments()">
+        <button type="button" onclick="removePaymentRow(${n})"
+                style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--text-muted);width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+            <i class="fas fa-times" style="font-size:.75rem"></i>
+        </button>
+        <div id="prow-${n}-warn" style="display:none;grid-column:1/-1;font-size:.78rem;color:#dc2626;padding:.1rem 0 0">
+            <i class="fas fa-triangle-exclamation"></i> <span id="prow-${n}-warn-text"></span>
+        </div>`;
+
+    document.getElementById('payment-rows').appendChild(row);
+
+    // Auto-select account if only one available
+    const acctSel = document.getElementById('prow-'+n+'-acct');
+    const opts = [...acctSel.options].filter(o => o.value);
+    if (opts.length === 1) { acctSel.value = opts[0].value; }
+    onRowAcctChange(n);
+}
+
+function removePaymentRow(n) {
+    document.getElementById('prow-'+n)?.remove();
+    recalcPayments();
+}
+
+function onRowMethodChange(n) {
+    const method  = document.getElementById('prow-'+n+'-method').value;
+    const acctSel = document.getElementById('prow-'+n+'-acct');
+    acctSel.innerHTML = buildAccountOptions(method);
+    const opts = [...acctSel.options].filter(o => o.value);
+    if (opts.length === 1) { acctSel.value = opts[0].value; }
+    onRowAcctChange(n);
+}
+
+function onRowAcctChange(n) {
+    const acctSel = document.getElementById('prow-'+n+'-acct');
+    const balEl   = document.getElementById('prow-'+n+'-bal');
+    const opt     = acctSel.options[acctSel.selectedIndex];
+    if (!acctSel.value || !opt) { balEl.textContent = '—'; balEl.style.color = 'var(--text-muted)'; return; }
+    const bal = parseFloat(opt.dataset.balance || 0);
+    balEl.textContent = bal.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }) + ' FRW';
+    balEl.style.color = bal < 0 ? '#dc2626' : 'var(--text)';
+    checkRowBalance(n);
+}
+
+function checkRowBalance(n) {
+    const acctSel = document.getElementById('prow-'+n+'-acct');
+    const amtInp  = document.getElementById('prow-'+n+'-amt');
+    const warn    = document.getElementById('prow-'+n+'-warn');
+    const wtext   = document.getElementById('prow-'+n+'-warn-text');
+    const amtEl   = document.getElementById('prow-'+n+'-amt');
+    if (!warn || !acctSel) return;
+
+    if (!acctSel.value) { warn.style.display = 'none'; amtEl && (amtEl.style.borderColor = ''); return; }
+
+    const opt = acctSel.options[acctSel.selectedIndex];
+    const bal = parseFloat(opt?.dataset.balance || 0);
+    const amt = parseFloat(amtInp?.value.replace(/,/g,'')) || 0;
+
+    if (amt > 0 && amt > bal) {
+        wtext.textContent = 'Insufficient balance. Available: ' + bal.toLocaleString('en-US',{minimumFractionDigits:2}) + ' FRW.';
+        warn.style.display = '';
+        amtEl.style.borderColor = '#dc2626';
+    } else {
+        warn.style.display = 'none';
+        amtEl.style.borderColor = '';
+    }
+}
+
+function recalcPayments() {
+    let total = 0;
+    document.querySelectorAll('[id^="prow-"][id$="-amt"]').forEach(inp => {
+        total += parseFloat(inp.value.replace(/,/g,'')) || 0;
+    });
+
+    const totalEl = document.getElementById('total-paid-display');
+    const loanEl  = document.getElementById('loan-payable-display');
+    const loanLbl = document.getElementById('loan-payable-label');
+    if (totalEl) totalEl.textContent = total.toLocaleString('en-US', { minimumFractionDigits:2 }) + ' FRW';
+
+    const suppIdP = document.querySelector('[name="supplier_id"]')?.value || '';
+    const lp      = currentNetToPay - total;
+
+    const projNetEl = document.getElementById('projected-net-val');
+    if (projNetEl) {
+        const curDef     = parseFloat(deferredBalances[suppIdP] || 0);
+        const curAdv     = parseFloat(loanBalances[suppIdP] || 0);
+        const loanType   = document.getElementById('loan-type-select')?.value || '';
+        const loanAmount = parseFloat(document.getElementById('loan-amount')?.value) || 0;
+        const overpaid   = lp < -0.005 ? Math.abs(lp) : 0;
+        // deferred after this batch
+        let projDef = lp > 0.005 ? curDef + lp : Math.max(0, curDef - overpaid);
+        // advance after this batch
+        const advFromOver = Math.max(0, overpaid - curDef);
+        let projAdv = curAdv + advFromOver;
+        if (loanType === 'loan'      && loanAmount > 0) projAdv += loanAmount;
+        if (loanType === 'repayment' && loanAmount > 0) projAdv -= loanAmount;
+        projAdv = Math.max(0, projAdv);
+        const projNet    = projDef - projAdv;
+        const curNet     = curDef - curAdv;
+        const netOwed    = projNet > 0.005;
+        const netLabel   = netOwed ? ' owed to supplier' : ' supplier owes us';
+        const projColor  = projNet < curNet - 0.005 ? '#16a34a' : projNet > curNet + 0.005 ? '#dc2626' : (netOwed ? '#92400e' : '#1d4ed8');
+        projNetEl.textContent = Math.abs(projNet).toLocaleString('en-US',{minimumFractionDigits:2}) + ' FRW' + netLabel;
+        projNetEl.style.color = projColor;
+    }
+
+    if (!loanEl) return;
+    if (total <= 0) {
+        loanEl.textContent = '—'; loanEl.style.color = 'var(--text-muted)';
+        if (loanLbl) loanLbl.textContent = 'Loan Payable';
+        return;
+    }
+
+    const loanPayable = currentNetToPay - total;
+    const advWarn     = document.getElementById('advance-offset-warn');
+    const advWarnText = document.getElementById('advance-offset-warn-text');
+    const suppId      = document.querySelector('[name="supplier_id"]')?.value || '';
+    const advBal      = parseFloat(loanBalances[suppId] || 0);
+    const loanType    = document.getElementById('loan-type-select')?.value || '';
+
+    if (loanPayable > 0.005) {
+        if (loanLbl) loanLbl.textContent = 'Loan Payable';
+        loanEl.textContent = loanPayable.toLocaleString('en-US', { minimumFractionDigits:2 }) + ' FRW';
+        loanEl.style.color = '#dc2626';
+        // Warn if there is an unused advance that could reduce this deferred amount
+        if (advWarn && advBal > 0.005 && loanType !== 'repayment') {
+            advWarnText.textContent = 'This supplier has a ' + advBal.toLocaleString('en-US', { minimumFractionDigits:2 }) + ' FRW advance that could offset the loan payable.';
+            advWarn.style.display = '';
+        } else if (advWarn) {
+            advWarn.style.display = 'none';
+        }
+    } else if (loanPayable < -0.005) {
+        if (loanLbl) loanLbl.textContent = 'Supplier Advance';
+        const over = Math.abs(loanPayable);
+        loanEl.textContent = over.toLocaleString('en-US', { minimumFractionDigits:2 }) + ' FRW → recorded as advance';
+        loanEl.style.color = '#ea580c';
+        if (advWarn) advWarn.style.display = 'none';
+    } else {
+        if (loanLbl) loanLbl.textContent = 'Loan Payable';
+        loanEl.textContent = 'Fully Paid';
+        loanEl.style.color = '#16a34a';
+        if (advWarn) advWarn.style.display = 'none';
+    }
 }
 
 /* ── Submit ─────────────────────────────────────────────────── */
@@ -646,6 +1032,14 @@ document.getElementById('batch-form').addEventListener('submit', function (e) {
     }
     if (document.getElementById('batch-loan-warning').style.display !== 'none') {
         showAlert('error', document.getElementById('batch-loan-warning-text').textContent);
+        return;
+    }
+
+    const insufficientRows = [...document.querySelectorAll('[id^="prow-"][id$="-warn"]')]
+        .filter(w => w.style.display !== 'none');
+    if (insufficientRows.length > 0) {
+        showAlert('error', 'One or more payment accounts have insufficient balance. Please correct before saving.');
+        insufficientRows[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
 

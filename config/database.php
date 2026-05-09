@@ -19,8 +19,8 @@ function hasRole($role) {
 
 function logAction($pdo, $user_id, $action, $table_name, $record_id, $details = null) {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-    $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, table_name, record_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$user_id, $action, $table_name, $record_id, $details, $ip]);
+    // $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, table_name, record_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)");
+    // $stmt->execute([$user_id, $action, $table_name, $record_id, $details, $ip]);
 }
 
 function paginate(int $page, int $total_pages, array $params, string $script): string {

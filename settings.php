@@ -129,6 +129,42 @@ if(isset($_SERVER['HTTP_X_REQUESTED_WITH'])){
         }
         exit;
     }
+
+    /* Clear database */
+    if($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['clear_database'])){
+        $scope = $_POST['scope'] ?? '';
+        $transactional = [
+            'account_transactions','audit_log','inventory','purchase_details','purchase_payments',
+            'sale_details','sales','supplier_loans','buyer_loans','transactions','batches','expenses',
+        ];
+        $all_except_users = array_merge($transactional, ['buyers','suppliers','company_accounts']);
+        $full_reset = array_merge($all_except_users, ['mineral_price_settings','mineral_types']);
+
+        $tables = match($scope) {
+            'transactional' => $transactional,
+            'all'           => $all_except_users,
+            'full'          => $full_reset,
+            default         => null,
+        };
+
+        if(!$tables){
+            echo json_encode(['success'=>false,'message'=>'Invalid scope.']);
+            exit;
+        }
+
+        try {
+            $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
+            foreach($tables as $t){
+                $pdo->exec("TRUNCATE TABLE `".preg_replace('/[^a-z_]/','',$t)."`");
+            }
+            $pdo->exec("SET FOREIGN_KEY_CHECKS=1");
+            echo json_encode(['success'=>true,'message'=>count($tables).' table(s) cleared successfully.']);
+        } catch(Exception $e){
+            $pdo->exec("SET FOREIGN_KEY_CHECKS=1");
+            echo json_encode(['success'=>false,'message'=>$e->getMessage()]);
+        }
+        exit;
+    }
 }
 
 /* ── Page data ─────────────────────────────────────────────────── */
@@ -631,6 +667,116 @@ function checkPriceEmpty(){
             'No price settings yet.</td></tr>';
     }
 }
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 3 — DANGER ZONE
+═══════════════════════════════════════════════════════════════ -->
+<div style="margin-top:2.5rem;border:2px solid var(--danger);border-radius:var(--radius);padding:1.5rem">
+    <h2 style="color:var(--danger);margin-bottom:.4rem">
+        <i class="fas fa-triangle-exclamation" style="margin-right:.4rem"></i>Danger Zone
+    </h2>
+    <p style="color:var(--text-muted);margin-bottom:1.25rem;font-size:.9rem">
+        These actions are <strong>irreversible</strong>. User accounts are always preserved.
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:.75rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1rem;background:var(--surface);border-radius:var(--radius);flex-wrap:wrap;gap:.5rem">
+            <div>
+                <div class="fw-700">Clear Transactional Data</div>
+                <div style="font-size:.82rem;color:var(--text-muted)">Removes batches, sales, purchases, inventory movements, transactions, loans &amp; audit log. Keeps buyers, suppliers, mineral types &amp; prices.</div>
+            </div>
+            <button class="btn btn-danger" style="white-space:nowrap" onclick="openClearModal('transactional','Clear Transactional Data')">
+                <i class="fas fa-eraser"></i> Clear
+            </button>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1rem;background:var(--surface);border-radius:var(--radius);flex-wrap:wrap;gap:.5rem">
+            <div>
+                <div class="fw-700">Clear All Business Data</div>
+                <div style="font-size:.82rem;color:var(--text-muted)">Everything above <em>plus</em> buyers, suppliers &amp; company accounts. Keeps mineral types &amp; prices.</div>
+            </div>
+            <button class="btn btn-danger" style="white-space:nowrap" onclick="openClearModal('all','Clear All Business Data')">
+                <i class="fas fa-trash-can"></i> Clear
+            </button>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1rem;background:var(--surface);border-radius:var(--radius);flex-wrap:wrap;gap:.5rem">
+            <div>
+                <div class="fw-700">Full Reset</div>
+                <div style="font-size:.82rem;color:var(--text-muted)">Everything above <em>plus</em> mineral types &amp; price settings. Only user accounts survive.</div>
+            </div>
+            <button class="btn btn-danger" style="white-space:nowrap" onclick="openClearModal('full','Full Database Reset')">
+                <i class="fas fa-bomb"></i> Reset
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation modal -->
+<div id="clear-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center">
+    <div style="background:var(--card-bg);border-radius:var(--radius);padding:2rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.35)">
+        <h3 style="color:var(--danger);margin-bottom:.5rem" id="clear-modal-title">Confirm</h3>
+        <p style="color:var(--text-muted);font-size:.88rem;margin-bottom:1rem">
+            Type <strong>CLEAR</strong> in the box below to confirm. This cannot be undone.
+        </p>
+        <input type="text" id="clear-confirm-input" placeholder="Type CLEAR here"
+               style="width:100%;box-sizing:border-box;margin-bottom:1rem;text-transform:uppercase"
+               oninput="document.getElementById('clear-confirm-btn').disabled = this.value.toUpperCase() !== 'CLEAR'">
+        <div style="display:flex;gap:.75rem;justify-content:flex-end">
+            <button class="btn btn-secondary" onclick="closeClearModal()">Cancel</button>
+            <button id="clear-confirm-btn" class="btn btn-danger" disabled onclick="executeClear()">
+                <i class="fas fa-triangle-exclamation"></i> Confirm &amp; Clear
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let _clearScope = '';
+
+function openClearModal(scope, title){
+    _clearScope = scope;
+    document.getElementById('clear-modal-title').textContent = title;
+    document.getElementById('clear-confirm-input').value = '';
+    document.getElementById('clear-confirm-btn').disabled = true;
+    document.getElementById('clear-modal').style.display = 'flex';
+}
+
+function closeClearModal(){
+    document.getElementById('clear-modal').style.display = 'none';
+    _clearScope = '';
+}
+
+function executeClear(){
+    const btn = document.getElementById('clear-confirm-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing…';
+
+    const fd = new FormData();
+    fd.append('clear_database','1');
+    fd.append('scope', _clearScope);
+    fetch('settings.php', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}, body:fd })
+    .then(r => r.json())
+    .then(d => {
+        closeClearModal();
+        showAlert(d.success ? 'success' : 'error', d.message);
+        if(d.success && (_clearScope === 'full')){
+            document.getElementById('mineral-tbody').innerHTML =
+                '<tr id="mineral-empty"><td colspan="6" style="text-align:center;padding:2.5rem;color:var(--text-muted)">'+
+                '<i class="fas fa-gem" style="font-size:1.5rem;display:block;margin-bottom:.5rem"></i>No mineral types defined yet.</td></tr>';
+            document.getElementById('price-tbody').innerHTML =
+                '<tr id="price-empty"><td colspan="7" style="text-align:center;padding:2.5rem;color:var(--text-muted)">'+
+                '<i class="fas fa-tags" style="font-size:1.5rem;display:block;margin-bottom:.5rem"></i>No price settings yet.</td></tr>';
+            document.getElementById('price-mineral-select').innerHTML = '<option value="">— Select Mineral —</option>';
+        }
+    })
+    .catch(() => { closeClearModal(); showAlert('error','Network error.'); });
+}
+
+document.getElementById('clear-modal').addEventListener('click', function(e){
+    if(e.target === this) closeClearModal();
+});
 </script>
 
 <?php include 'includes/footer.php'; ?>

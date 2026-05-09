@@ -78,8 +78,12 @@ if($filters['loan_status'] === 'no_loan')   $loan_having = 'HAVING loan_balance 
 $stmt = $pdo->prepare("
     SELECT s.*,
            COALESCE(SUM(b.quantity),0) AS total_supplied,
-           COALESCE((SELECT SUM(CASE WHEN type='loan' THEN amount ELSE -amount END)
-                     FROM supplier_loans WHERE supplier_id=s.id),0) AS loan_balance
+           COALESCE((SELECT SUM(CASE WHEN type='loan' AND is_deferred=0 THEN amount WHEN type='repayment' THEN -amount ELSE 0 END)
+                     FROM supplier_loans WHERE supplier_id=s.id),0) AS loan_balance,
+           COALESCE((SELECT SUM(CASE WHEN type='loan' AND is_deferred=1 THEN amount
+                                        WHEN type='repayment' AND is_deferred=1 THEN -amount
+                                        ELSE 0 END)
+                     FROM supplier_loans WHERE supplier_id=s.id),0) AS deferred_balance
     FROM suppliers s
     LEFT JOIN batches b ON b.supplier_id = s.id
     $where_sql
@@ -185,7 +189,8 @@ include 'includes/header.php';
                 <th>Email</th>
                 <th>License</th>
                 <th style="text-align:right">Supplied (kg)</th>
-                <th style="text-align:right">Loan Balance (FRW)</th>
+                <th style="text-align:right">Loan Receivable (FRW)</th>
+                <th style="text-align:right">Loan Payable (FRW)</th>
                 <th style="text-align:center">Actions</th>
             </tr>
         </thead>
@@ -196,6 +201,8 @@ include 'includes/header.php';
             $lb    = (float)$sup['loan_balance'];
             $lbPos = $lb > 0;
             $lbClr = $lbPos ? '#dc2626' : '#16a34a';
+            $def   = (float)$sup['deferred_balance'];
+            $defClr = $def > 0 ? '#ea580c' : '#16a34a';
         ?>
         <tr id="sup-row-<?= $sup['id'] ?>">
             <td class="font-mono text-muted" style="font-size:.78rem"><?= ++$i ?></td>
@@ -206,8 +213,18 @@ include 'includes/header.php';
             <td class="font-mono text-muted" style="font-size:.78rem"><?= htmlspecialchars($sup['license_number'] ?? '') ?></td>
             <td style="text-align:right" class="fw-600"><?= number_format($sup['total_supplied'], 3) ?></td>
             <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $lbClr ?>">
-                <?= ($lbPos ? '' : '') . number_format(abs($lb), 2) ?>
-                <div style="font-size:.7rem;font-weight:400;color:<?= $lbClr ?>"><?= $lbPos ? 'Outstanding' : 'Clear' ?></div>
+                <?= number_format(abs($lb), 2) ?>
+                <div style="font-size:.7rem;font-weight:400;color:<?= $lbClr ?>"><?= $lbPos ? 'Owes us' : 'Clear' ?></div>
+            </td>
+            <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $defClr ?>">
+                <?php if($def > 0): ?>
+                <a href="loans-payable.php?supplier_id=<?= $sup['id'] ?>" style="color:<?= $defClr ?>;text-decoration:none">
+                    <?= number_format($def, 2) ?>
+                    <div style="font-size:.7rem;font-weight:400">We owe</div>
+                </a>
+                <?php else: ?>
+                <span style="color:#16a34a">0.00<div style="font-size:.7rem;font-weight:400">Clear</div></span>
+                <?php endif; ?>
             </td>
             <td style="text-align:center;white-space:nowrap">
                 <a href="loans.php?supplier_id=<?= $sup['id'] ?>"
@@ -222,7 +239,7 @@ include 'includes/header.php';
         </tr>
         <?php endforeach; ?>
         <?php if(!$suppliers): ?>
-        <tr id="empty-row"><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-muted)">
+        <tr id="empty-row"><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-muted)">
             <?= $has_filters ? 'No suppliers match the current filters.' : 'No suppliers yet. Add your first supplier above.' ?>
         </td></tr>
         <?php endif; ?>
@@ -298,6 +315,8 @@ function prependCard(s){
         '<td style="text-align:right" class="fw-600">0.000</td>' +
         '<td style="text-align:right;font-family:monospace;font-weight:700;color:#16a34a">' +
             '0.00<div style="font-size:.7rem;font-weight:400;color:#16a34a">Clear</div></td>' +
+        '<td style="text-align:right;font-family:monospace;font-weight:700;color:#16a34a">' +
+            '0.00<div style="font-size:.7rem;font-weight:400;color:#16a34a">Clear</div></td>' +
         '<td style="text-align:center;white-space:nowrap">' +
             '<a href="loans.php?supplier_id=' + s.id + '" class="btn btn-secondary" style="padding:.3rem .6rem;font-size:.75rem;margin-right:.3rem">' +
                 '<i class="fas fa-eye"></i> Loans</a>' +
@@ -332,7 +351,7 @@ function deleteSupplier(id, btn){
                 row.remove();
                 if(!document.querySelector('#sup-tbody tr:not(#empty-row)')){
                     document.getElementById('sup-tbody').innerHTML =
-                        '<tr id="empty-row"><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-muted)">No suppliers yet.</td></tr>';
+                        '<tr id="empty-row"><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-muted)">No suppliers yet.</td></tr>';
                 }
             }, 300);
             showAlert('success', d.message);

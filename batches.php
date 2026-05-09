@@ -59,6 +59,23 @@ $stmt = $pdo->prepare("
 $stmt->execute($params);
 $batches = $stmt->fetchAll();
 
+/* ── Payment records for displayed batches ──────────────────── */
+$payments_by_batch = [];
+if($batches){
+    $batch_ids    = array_column($batches, 'id');
+    $placeholders = implode(',', array_fill(0, count($batch_ids), '?'));
+    $pay_s = $pdo->prepare("
+        SELECT pp.batch_id, pp.payment_method, pp.amount, ca.account_name
+        FROM purchase_payments pp
+        LEFT JOIN company_accounts ca ON ca.id = pp.account_id
+        WHERE pp.batch_id IN ($placeholders)
+        ORDER BY pp.batch_id, pp.id
+    ");
+    $pay_s->execute($batch_ids);
+    foreach($pay_s->fetchAll() as $pay)
+        $payments_by_batch[$pay['batch_id']][] = $pay;
+}
+
 /* ── Summary totals (same filters) ─────────────────────────── */
 $sum_s = $pdo->prepare("
     SELECT
@@ -197,7 +214,7 @@ $fmt = fn($v,$d=2) => number_format($v,$d);
                 <th style="text-align:right">Unit Price</th>
                 <th style="text-align:right">Take Home</th>
                 <th>Loan</th>
-               
+                <th>Payment</th>
                 <th>Created By</th>
             </tr>
         </thead>
@@ -257,12 +274,32 @@ $fmt = fn($v,$d=2) => number_format($v,$d);
                         <span class="text-muted">—</span>
                     <?php endif; ?>
                 </td>
-               
+                <td style="white-space:nowrap">
+                    <?php
+                    $bpays = $payments_by_batch[$b['id']] ?? [];
+                    if($bpays):
+                        $method_styles = [
+                            'cash' => ['#16a34a','#f0fdf4','Cash'],
+                            'bank' => ['#2563eb','#eff6ff','Bank'],
+                            'momo' => ['#7c3aed','#f5f3ff','MoMo'],
+                        ];
+                        $seen = [];
+                        foreach($bpays as $bp):
+                            $m = $bp['payment_method'];
+                            if(isset($seen[$m])) continue; $seen[$m] = true;
+                            [$clr,$bg,$lbl] = $method_styles[$m] ?? ['#6b7280','#f3f4f6',$m];
+                    ?>
+                    <span style="display:inline-block;font-size:.72rem;font-weight:600;padding:.15rem .45rem;border-radius:4px;background:<?= $bg ?>;color:<?= $clr ?>;margin-right:.2rem"><?= $lbl ?></span>
+                    <?php endforeach; ?>
+                    <?php else: ?>
+                    <span class="text-muted">—</span>
+                    <?php endif; ?>
+                </td>
                 <td class="text-muted" style="font-size:.82rem"><?= htmlspecialchars($b['created_by_name'] ?? '—') ?></td>
             </tr>
             <?php if($has_detail): ?>
             <tr id="detail-<?= $b['id'] ?>" style="display:none;background:rgba(var(--primary-rgb,37,99,235),.03)">
-                <td colspan="11" style="padding:.6rem 1rem .75rem 3.5rem;border-top:none">
+                <td colspan="12" style="padding:.6rem 1rem .75rem 3.5rem;border-top:none">
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.35rem .9rem;font-size:.82rem">
                         <?php if($px_label): ?>
                         <div><span class="text-muted"><?= $px_label ?>:</span>
@@ -295,12 +332,35 @@ $fmt = fn($v,$d=2) => number_format($v,$d);
                         <div><span class="text-muted">Currency:</span>
                              <strong><?= htmlspecialchars($cur) ?></strong></div>
                     </div>
+                    <?php if(!empty($payments_by_batch[$b['id']])): ?>
+                    <div style="margin-top:.55rem;padding-top:.45rem;border-top:1px solid var(--border)22;font-size:.82rem">
+                        <span class="text-muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Payments</span>
+                        <div style="display:flex;flex-wrap:wrap;gap:.4rem .9rem;margin-top:.3rem">
+                            <?php
+                            $method_icons = ['cash'=>'fa-money-bill-wave','bank'=>'fa-building-columns','momo'=>'fa-mobile-screen'];
+                            $method_styles = ['cash'=>['#16a34a','Cash'],'bank'=>['#2563eb','Bank Transfer'],'momo'=>['#7c3aed','Mobile Money']];
+                            foreach($payments_by_batch[$b['id']] as $bp):
+                                $m = $bp['payment_method'];
+                                [$clr,$lbl] = $method_styles[$m] ?? ['#6b7280', $m];
+                                $icon = $method_icons[$m] ?? 'fa-credit-card';
+                            ?>
+                            <span style="color:<?= $clr ?>;font-weight:600">
+                                <i class="fas <?= $icon ?>"></i> <?= $lbl ?>:
+                                <strong><?= number_format($bp['amount'],2) ?> FRW</strong>
+                                <?php if(!empty($bp['account_name'])): ?>
+                                <span class="text-muted" style="font-weight:400">(<?= htmlspecialchars($bp['account_name']) ?>)</span>
+                                <?php endif; ?>
+                            </span>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 </td>
             </tr>
             <?php endif; ?>
             <?php endforeach; ?>
             <?php if(!$batches): ?>
-            <tr id="empty-row"><td colspan="11" style="text-align:center;padding:2rem;color:var(--text-muted)">
+            <tr id="empty-row"><td colspan="12" style="text-align:center;padding:2rem;color:var(--text-muted)">
                 <?= $has_filters ? 'No batches match the current filters.' : 'No batches found.' ?>
             </td></tr>
             <?php endif; ?>
