@@ -41,6 +41,41 @@ if(isset($_SERVER['HTTP_X_REQUESTED_WITH'])){
         exit;
     }
 
+    /* Edit supplier */
+    if($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['edit'])){
+        try {
+            $uid = (int)$_POST['id'];
+            $stmt = $pdo->prepare("
+                UPDATE suppliers
+                SET name=?, contact_person=?, phone=?, email=?, license_number=?, address=?
+                WHERE id=?
+            ");
+            $stmt->execute([
+                $_POST['name'], $_POST['contact_person'] ?? '',
+                $_POST['phone'] ?? '', $_POST['email'] ?? '',
+                $_POST['license_number'] ?? '', $_POST['address'] ?? '',
+                $uid
+            ]);
+            logAction($pdo,$_SESSION['user_id'],'UPDATE','suppliers',$uid,"Edited supplier: {$_POST['name']}");
+            echo json_encode([
+                'success'  => true,
+                'message'  => "Supplier <strong>".htmlspecialchars($_POST['name'])."</strong> updated.",
+                'supplier' => [
+                    'id'             => $uid,
+                    'name'           => $_POST['name'],
+                    'contact_person' => $_POST['contact_person']  ?? '',
+                    'phone'          => $_POST['phone']           ?? '',
+                    'email'          => $_POST['email']           ?? '',
+                    'license_number' => $_POST['license_number']  ?? '',
+                    'address'        => $_POST['address']         ?? '',
+                ]
+            ]);
+        } catch(Exception $e){
+            echo json_encode(['success'=>false,'message'=>'Error: '.$e->getMessage()]);
+        }
+        exit;
+    }
+
     /* Delete supplier */
     if($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['delete'])){
         try {
@@ -103,48 +138,56 @@ include 'includes/header.php';
 
 <div class="page-header">
     <h2><i class="fas fa-building" style="margin-right:.4rem;color:var(--text-muted)"></i>Supplier Management</h2>
-    <button class="btn btn-primary" onclick="togglePanel()">
+    <button class="btn btn-primary" onclick="openModal()">
         <i class="fas fa-plus"></i> Add Supplier
     </button>
 </div>
 
-<!-- Add form -->
-<div class="slide-panel" id="sup-panel">
-    <h3><i class="fas fa-plus-circle" style="margin-right:.4rem"></i>Register New Supplier</h3>
-    <form id="sup-form">
-        <div class="form-grid form-grid-2">
-            <div class="form-group">
-                <label>Company Name</label>
-                <input type="text" name="name" placeholder="ABC Mining Co." required>
-            </div>
-            <div class="form-group">
-                <label>Contact Person</label>
-                <input type="text" name="contact_person" placeholder="Full name">
-            </div>
-            <div class="form-group">
-                <label>Phone</label>
-                <input type="text" name="phone" placeholder="+1 555 000 0000">
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" name="email" placeholder="contact@company.com">
-            </div>
-            <div class="form-group">
-                <label>License Number</label>
-                <input type="text" name="license_number" placeholder="LIC-XXXX">
-            </div>
-            <div class="form-group">
-                <label>Address</label>
-                <textarea name="address" placeholder="Full address…"></textarea>
-            </div>
+<!-- Add / Edit Supplier Modal -->
+<div class="modal-backdrop" id="sup-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-header">
+            <h3 id="sup-modal-title"><i class="fas fa-plus-circle" style="margin-right:.4rem;color:var(--primary)"></i>Register New Supplier</h3>
+            <button class="modal-close" onclick="closeModal()" type="button"><i class="fas fa-xmark"></i></button>
         </div>
-        <div class="slide-panel-btns">
-            <button type="submit" id="sup-save-btn" class="btn btn-primary">
+        <div class="modal-body">
+            <form id="sup-form">
+                <input type="hidden" name="id" id="sup-id">
+                <div class="form-grid form-grid-2">
+                    <div class="form-group">
+                        <label>Company Name</label>
+                        <input type="text" name="name" id="sup-name" placeholder="ABC Mining Co." required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Person</label>
+                        <input type="text" name="contact_person" id="sup-contact" placeholder="Full name">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="text" name="phone" id="sup-phone" placeholder="+1 555 000 0000">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" id="sup-email" placeholder="contact@company.com">
+                    </div>
+                    <div class="form-group">
+                        <label>License Number</label>
+                        <input type="text" name="license_number" id="sup-license" placeholder="LIC-XXXX">
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <textarea name="address" id="sup-address" placeholder="Full address…"></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="submit" form="sup-form" id="sup-save-btn" class="btn btn-primary">
                 <i class="fas fa-save"></i> Save Supplier
             </button>
-            <button type="button" class="btn btn-secondary" onclick="togglePanel()">Cancel</button>
         </div>
-    </form>
+    </div>
 </div>
 
 <!-- Filter bar -->
@@ -204,7 +247,13 @@ include 'includes/header.php';
             $def   = (float)$sup['deferred_balance'];
             $defClr = $def > 0 ? '#ea580c' : '#16a34a';
         ?>
-        <tr id="sup-row-<?= $sup['id'] ?>">
+        <tr id="sup-row-<?= $sup['id'] ?>"
+            data-name="<?= htmlspecialchars($sup['name'], ENT_QUOTES) ?>"
+            data-contact="<?= htmlspecialchars($sup['contact_person'] ?? '', ENT_QUOTES) ?>"
+            data-phone="<?= htmlspecialchars($sup['phone'] ?? '', ENT_QUOTES) ?>"
+            data-email="<?= htmlspecialchars($sup['email'] ?? '', ENT_QUOTES) ?>"
+            data-license="<?= htmlspecialchars($sup['license_number'] ?? '', ENT_QUOTES) ?>"
+            data-address="<?= htmlspecialchars($sup['address'] ?? '', ENT_QUOTES) ?>">
             <td class="font-mono text-muted" style="font-size:.78rem"><?= ++$i ?></td>
             <td class="fw-600"><?= htmlspecialchars($sup['name']) ?></td>
             <td class="text-muted"><?= htmlspecialchars($sup['contact_person'] ?? '') ?></td>
@@ -231,6 +280,10 @@ include 'includes/header.php';
                    class="btn btn-secondary" style="padding:.3rem .6rem;font-size:.75rem;margin-right:.3rem">
                     <i class="fas fa-eye"></i> Loans
                 </a>
+                <button class="btn btn-secondary" style="padding:.3rem .6rem;font-size:.75rem;margin-right:.3rem"
+                        onclick="editSupplier(<?= $sup['id'] ?>)" title="Edit">
+                    <i class="fas fa-pencil"></i>
+                </button>
                 <button class="btn btn-danger" style="padding:.3rem .6rem;font-size:.75rem"
                         onclick="deleteSupplier(<?= $sup['id'] ?>, this)">
                     <i class="fas fa-trash"></i>
@@ -248,9 +301,27 @@ include 'includes/header.php';
 </div>
 
 <script>
-function togglePanel(){
-    document.getElementById('sup-panel').classList.toggle('open');
+let supEditMode = false;
+
+function openModal(isEdit = false){
+    supEditMode = isEdit;
+    const title = document.getElementById('sup-modal-title');
+    if(isEdit){
+        title.innerHTML = '<i class="fas fa-pencil" style="margin-right:.4rem;color:var(--primary)"></i>Edit Supplier';
+    } else {
+        title.innerHTML = '<i class="fas fa-plus-circle" style="margin-right:.4rem;color:var(--primary)"></i>Register New Supplier';
+    }
+    document.getElementById('sup-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
 }
+function closeModal(){
+    document.getElementById('sup-modal').classList.remove('open');
+    document.body.style.overflow = '';
+    document.getElementById('sup-form').reset();
+    document.getElementById('sup-id').value = '';
+    supEditMode = false;
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
 
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -263,7 +334,20 @@ function showAlert(type, msg){
     el._t = setTimeout(()=>{ el.style.display='none'; }, 5000);
 }
 
-/* ── Add supplier ──────────────────────────────────────────── */
+/* ── Edit: open modal pre-filled ───────────────────────────── */
+function editSupplier(id){
+    const row = document.getElementById('sup-row-'+id);
+    document.getElementById('sup-id').value      = id;
+    document.getElementById('sup-name').value    = row.dataset.name;
+    document.getElementById('sup-contact').value = row.dataset.contact;
+    document.getElementById('sup-phone').value   = row.dataset.phone;
+    document.getElementById('sup-email').value   = row.dataset.email;
+    document.getElementById('sup-license').value = row.dataset.license;
+    document.getElementById('sup-address').value = row.dataset.address;
+    openModal(true);
+}
+
+/* ── Add / Edit supplier submit ────────────────────────────── */
 document.getElementById('sup-form').addEventListener('submit', function(e){
     e.preventDefault();
     const btn = document.getElementById('sup-save-btn');
@@ -271,7 +355,7 @@ document.getElementById('sup-form').addEventListener('submit', function(e){
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
 
     const fd = new FormData(this);
-    fd.append('add', '1');
+    fd.append(supEditMode ? 'edit' : 'add', '1');
 
     fetch('suppliers.php', {
         method: 'POST',
@@ -282,9 +366,12 @@ document.getElementById('sup-form').addEventListener('submit', function(e){
     .then(d => {
         if(d.success){
             showAlert('success', d.message);
-            prependCard(d.supplier);
-            togglePanel();
-            this.reset();
+            if(supEditMode){
+                updateRow(d.supplier);
+            } else {
+                prependCard(d.supplier);
+            }
+            closeModal();
         } else {
             showAlert('error', d.message);
         }
@@ -297,6 +384,24 @@ document.getElementById('sup-form').addEventListener('submit', function(e){
         btn.innerHTML = '<i class="fas fa-save"></i> Save Supplier';
     });
 });
+
+function updateRow(s){
+    const row = document.getElementById('sup-row-'+s.id);
+    if(!row) return;
+    row.dataset.name    = s.name;
+    row.dataset.contact = s.contact_person;
+    row.dataset.phone   = s.phone;
+    row.dataset.email   = s.email;
+    row.dataset.license = s.license_number;
+    row.dataset.address = s.address;
+
+    const cells = row.querySelectorAll('td');
+    cells[1].textContent = s.name;
+    cells[2].textContent = s.contact_person;
+    cells[3].textContent = s.phone;
+    cells[4].textContent = s.email;
+    cells[5].textContent = s.license_number;
+}
 
 function prependCard(s){
     const tbody = document.getElementById('sup-tbody');

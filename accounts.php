@@ -184,7 +184,7 @@ include 'includes/header.php';
             <select id="f-type">
                 <option value="">— Select type —</option>
                 <option value="cash">Cash</option>
-                <option value="bank">Bank Transfer</option>
+                <option value="bank">Bank </option>
                 <option value="momo">Mobile Money (MoMo)</option>
             </select>
         </div>

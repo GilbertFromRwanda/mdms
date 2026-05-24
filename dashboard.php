@@ -263,7 +263,7 @@ require 'includes/header.php';
                 No sales data yet
             </div>
             <?php else: ?>
-            <canvas id="revenueChart" height="220"></canvas>
+            <div style="position:relative;height:220px"><canvas id="revenueChart"></canvas></div>
             <?php endif; ?>
         </div>
     </div>
@@ -277,7 +277,7 @@ require 'includes/header.php';
             <?php if (empty($stock_rows)): ?>
             <div style="padding:3rem 0;color:var(--text-muted);font-size:.85rem;text-align:center">No stock data</div>
             <?php else: ?>
-            <canvas id="stockDonut" width="200" height="200"></canvas>
+            <div style="position:relative;width:200px;height:200px"><canvas id="stockDonut"></canvas></div>
             <div style="width:100%;display:flex;flex-direction:column;gap:.35rem">
                 <?php
                 $donut_colors = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4'];
@@ -461,6 +461,7 @@ if(document.getElementById('revenueChart') && revLabels.length){
         },
         options: {
             responsive:true,
+            maintainAspectRatio:false,
             plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12, padding:12 } } },
             scales:{
                 x:{ grid:{display:false}, ticks:{font:{size:11}} },
@@ -475,9 +476,11 @@ if(document.getElementById('stockDonut') && stockNames.length){
         type: 'doughnut',
         data: {
             labels: stockNames,
-            datasets:[{ data: stockVals, backgroundColor: donutColors, borderWidth:2, borderColor:'#fff', hoverOffset:6 }]
+            datasets:[{ data: stockVals, backgroundColor: donutColors, borderWidth:2, borderColor:'#fff', hoverOffset:0 }]
         },
         options: {
+            responsive:true,
+            maintainAspectRatio:false,
             cutout:'68%',
             plugins:{
                 legend:{ display:false },

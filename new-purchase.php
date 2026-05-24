@@ -243,7 +243,7 @@ include 'includes/header.php';
                 <select name="supplier_id" required onchange="onSupplierChange(this.value)">
                     <option value="">— Select supplier —</option>
                     <?php foreach($suppliers as $s): ?>
-                    <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name']) ?></option>
+                    <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name'] . ($s['phone'] ? ' — ' . $s['phone'] : '')) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <div id="deferred-balance-info" style="display:none;margin-top:.45rem;padding:.4rem .65rem;border-radius:6px;font-size:.8rem;font-weight:600;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa">
@@ -357,7 +357,7 @@ include 'includes/header.php';
                 <span id="advance-offset-warn-text"></span>
                 &nbsp;·&nbsp;
                 <a href="#" style="color:#ea580c;font-weight:600;text-decoration:none"
-                   onclick="event.preventDefault();document.getElementById('loan-type-select').value='repayment';toggleLoanFields();document.getElementById('loan-amount').focus()">
+                   onclick="event.preventDefault();applyAdvanceOffset()">
                    Apply it now
                 </a>
             </div>
@@ -373,13 +373,18 @@ include 'includes/header.php';
     </div>
 
     <!-- Actions -->
-    <div style="display:flex;gap:.75rem;justify-content:flex-end;padding-bottom:2rem">
-        <a href="batches.php" class="btn btn-secondary">
-            <i class="fas fa-xmark"></i> Cancel
-        </a>
-        <button type="submit" id="batch-save-btn" class="btn btn-primary">
-            <i class="fas fa-save"></i> Save Purchase
-        </button>
+    <div style="padding-bottom:2rem">
+        <div id="btn-alert" style="display:none;padding:.55rem .85rem;border-radius:6px;margin-bottom:.6rem;font-size:.85rem;font-weight:500;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;text-align:right">
+            <i class="fas fa-circle-xmark"></i> <span id="btn-alert-text"></span>
+        </div>
+        <div style="display:flex;gap:.75rem;justify-content:flex-end">
+            <a href="batches.php" class="btn btn-secondary">
+                <i class="fas fa-xmark"></i> Cancel
+            </a>
+            <button type="submit" id="batch-save-btn" class="btn btn-primary">
+                <i class="fas fa-save"></i> Save Purchase
+            </button>
+        </div>
     </div>
 
 </form>
@@ -1022,25 +1027,67 @@ function recalcPayments() {
     }
 }
 
+function applyAdvanceOffset() {
+    const suppId = document.querySelector('[name="supplier_id"]')?.value || '';
+    const advBal = parseFloat(loanBalances[suppId] || 0);
+
+    let totalPaid = 0;
+    document.querySelectorAll('[id^="prow-"][id$="-amt"]').forEach(inp => {
+        totalPaid += parseFloat(inp.value.replace(/,/g,'')) || 0;
+    });
+    const loanPayable = currentNetToPay - totalPaid;
+    const applyAmt    = Math.min(advBal, Math.max(0, loanPayable));
+
+    document.getElementById('loan-type-select').value = 'repayment';
+    toggleLoanFields();
+    if (applyAmt > 0) document.getElementById('loan-amount').value = applyAmt.toFixed(2);
+    checkBatchLoanLimit();
+    updateGlobalSummary();
+    document.getElementById('loan-amount').focus();
+}
+
 /* ── Submit ─────────────────────────────────────────────────── */
+function showBtnAlert(msg) {
+    const el   = document.getElementById('btn-alert');
+    const text = document.getElementById('btn-alert-text');
+    if (!el || !text) { showAlert('error', msg); return; }
+    text.textContent = msg;
+    el.style.display = '';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, 7000);
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 document.getElementById('batch-form').addEventListener('submit', function (e) {
     e.preventDefault();
+    document.getElementById('btn-alert').style.display = 'none';
 
     if (Object.keys(cardCats).length === 0) {
-        showAlert('error', 'Please select at least one mineral.');
+        showBtnAlert('Please select at least one mineral.');
         return;
     }
     if (document.getElementById('batch-loan-warning').style.display !== 'none') {
-        showAlert('error', document.getElementById('batch-loan-warning-text').textContent);
+        showBtnAlert(document.getElementById('batch-loan-warning-text').textContent);
         return;
     }
 
     const insufficientRows = [...document.querySelectorAll('[id^="prow-"][id$="-warn"]')]
         .filter(w => w.style.display !== 'none');
     if (insufficientRows.length > 0) {
-        showAlert('error', 'One or more payment accounts have insufficient balance. Please correct before saving.');
+        showBtnAlert('One or more payment accounts have insufficient balance. Please correct before saving.');
         insufficientRows[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
+    }
+
+    const loanTypeVal = document.getElementById('loan-type-select')?.value || '';
+    const loanAmtVal  = parseFloat(document.getElementById('loan-amount')?.value) || 0;
+    if (loanTypeVal && loanAmtVal > 0) {
+        const hasPayment = [...document.querySelectorAll('[id^="prow-"][id$="-amt"]')]
+            .some(inp => (parseFloat(inp.value.replace(/,/g,'')) || 0) > 0);
+        if (!hasPayment) {
+            showBtnAlert('A loan/repayment amount is entered but no payment method has been filled in. Please add a payment or clear the loan field.');
+            return;
+        }
     }
 
     const btn = document.getElementById('batch-save-btn');

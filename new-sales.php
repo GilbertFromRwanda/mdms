@@ -146,6 +146,11 @@ $minerals         = $pdo->query("SELECT * FROM mineral_types ORDER BY name")->fe
 $buyers           = $pdo->query("SELECT * FROM buyers ORDER BY name")->fetchAll();
 $company_accounts = $pdo->query("SELECT id,account_type,account_name,balance FROM company_accounts WHERE is_active=1 ORDER BY account_type,account_name")->fetchAll(PDO::FETCH_ASSOC);
 
+$buyer_balances = $pdo->query("
+    SELECT buyer_id, COALESCE(SUM(CASE WHEN type='loan' THEN amount ELSE -amount END),0) AS balance
+    FROM buyer_loans GROUP BY buyer_id
+")->fetchAll(PDO::FETCH_KEY_PAIR);
+
 $special_minerals = [
     ['cat' => 'cassiterite', 'name' => 'Cassiterite', 'id' => null],
     ['cat' => 'coltan',      'name' => 'Coltan',       'id' => null],
@@ -199,7 +204,7 @@ include 'includes/header.php';
         <div class="form-grid form-grid-2">
             <div class="form-group">
                 <label>Buyer</label>
-                <select name="buyer_id" required>
+                <select name="buyer_id" required onchange="onBuyerChange()">
                     <option value="">— Select buyer —</option>
                     <?php foreach($buyers as $b): ?>
                     <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['name']) ?></option>
@@ -208,6 +213,7 @@ include 'includes/header.php';
                 <?php if(empty($buyers)): ?>
                 <small style="color:#f59e0b"><i class="fas fa-triangle-exclamation"></i> No buyers found — add buyers first.</small>
                 <?php endif; ?>
+                <div id="buyer-balance-info" style="display:none;margin-top:.4rem;font-size:.82rem;padding:.35rem .6rem;border-radius:5px;background:var(--bg)"></div>
             </div>
             <div class="form-group">
                 <label>Sale Date</label>
@@ -299,6 +305,7 @@ include 'includes/header.php';
 const costDefaults    = <?= json_encode($cost_defaults) ?>;
 const stockAvailable  = <?= json_encode($stock_available) ?>;
 const companyAccounts = <?= json_encode(array_values($company_accounts)) ?>;
+const buyerBalances   = <?= json_encode($buyer_balances) ?>;
 let salePayRowN       = 0;
 let globalTotalRevenue = 0;
 
@@ -509,6 +516,25 @@ function updateGlobalSummary() {
     body.innerHTML = html;
     globalTotalRevenue = totalRev;
     recalcSalePay();
+}
+
+function onBuyerChange() {
+    const bid = document.querySelector('[name="buyer_id"]').value;
+    const el  = document.getElementById('buyer-balance-info');
+    if (!el) return;
+    if (!bid) { el.style.display = 'none'; return; }
+    const bal = buyerBalances[bid] !== undefined ? parseFloat(buyerBalances[bid]) : 0;
+    if (Math.abs(bal) < 0.005) {
+        el.style.background = 'rgba(22,163,74,.1)';
+        el.innerHTML = '<i class="fas fa-circle-check" style="color:#16a34a"></i> <span style="color:#16a34a">No outstanding balance</span>';
+    } else if (bal > 0) {
+        el.style.background = 'rgba(220,38,38,.08)';
+        el.innerHTML = '<i class="fas fa-arrow-right" style="color:#dc2626"></i> <span style="color:#dc2626">Money owed to us: <strong>' + fmtRWF(bal) + '</strong></span>';
+    } else {
+        el.style.background = 'rgba(124,58,237,.08)';
+        el.innerHTML = '<i class="fas fa-arrow-left" style="color:#7c3aed"></i> <span style="color:#7c3aed">We owe buyer: <strong>' + fmtRWF(Math.abs(bal)) + '</strong></span>';
+    }
+    el.style.display = '';
 }
 
 function onCurrencyChange() {

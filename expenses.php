@@ -17,6 +17,7 @@ $CATEGORIES = [
     'Equipment'        => 'fa-screwdriver-wrench',
     'Maintenance'      => 'fa-hammer',
     'Government Fees'  => 'fa-landmark',
+    'Restaurant'       => 'fa-utensils',
     'Other'            => 'fa-tag',
 ];
 
@@ -370,24 +371,22 @@ const MTH_LABELS = {cash:'Cash',bank:'Bank',momo:'MoMo',mixed:'Mixed'};
 
 /* ── Category → description auto-fill ──────────────────────── */
 const CAT_DESC = {
-    'Electricity':      () => 'Electricity bill — '+monthLabel(),
-    'Water':            () => 'Water bill — '+monthLabel(),
-    'Internet':         () => 'Internet subscription — '+monthLabel(),
+    'Electricity':      () => 'Electricity bill',
+    'Water':            () => 'Water bill',
+    'Internet':         () => 'Internet subscription',
     'Airtime':          () => 'Airtime top-up',
     'Gas':              () => 'Gas refill',
-    'Waste Management': () => 'Waste management fee — '+monthLabel(),
-    'Security':         () => 'Security fee — '+monthLabel(),
+    'Waste Management': () => 'Waste management fee',
+    'Security':         () => 'Security fee',
     'Transport':        () => 'Transport expense',
-    'Salaries':         () => 'Salaries — '+monthLabel(),
+    'Salaries':         () => 'Salaries',
     'Office Supplies':  () => 'Office supplies purchase',
     'Equipment':        () => 'Equipment purchase',
     'Maintenance':      () => 'Maintenance work',
     'Government Fees':  () => 'Government fees payment',
+    'Restaurant':       () => 'Restaurant expense',
     'Other':            () => '',
 };
-function monthLabel(){
-    return new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'});
-}
 let expDescEdited = false;
 let expLastAutoDesc = '';
 function autoFillDesc(){

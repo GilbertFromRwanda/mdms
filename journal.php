@@ -32,7 +32,8 @@ function jdc(string $col, string $from, string $to): array {
 [$dc_sl, $dp_sl] = jdc('sl.created_at', $f['date_from'], $f['date_to']);
 [$dc_at, $dp_at] = jdc('at.created_at', $f['date_from'], $f['date_to']);
 [$dc_bl, $dp_bl] = jdc('bl.created_at', $f['date_from'], $f['date_to']);
-[$dc_ex, $dp_ex] = jdc('e.created_at', $f['date_from'], $f['date_to']);
+[$dc_ex, $dp_ex] = jdc('e.created_at',  $f['date_from'], $f['date_to']);
+[$dc_sd, $dp_sd] = jdc('sd.created_at', $f['date_from'], $f['date_to']);
 
 /* ── Main UNION (all journal sources) ────────────────────────── */
 $union_sql = "
@@ -150,10 +151,23 @@ $union_sql = "
     FROM expenses e
     LEFT JOIN users u ON u.id = e.created_by
     WHERE 1=1 $dc_ex
+
+    UNION ALL
+
+    SELECT sd.created_at, 'sale',
+           CONCAT('Sale: ', mt.name, ' → ', b.name),
+           b.name, sd.currency_used,
+           sd.total_revenue, NULL, NULL,
+           COALESCE(u.username,'—'), NULL
+    FROM sale_details sd
+    JOIN mineral_types mt ON mt.id = sd.mineral_id
+    JOIN buyers b         ON b.id  = sd.buyer_id
+    LEFT JOIN users u     ON u.id  = sd.created_by
+    WHERE sd.total_revenue IS NOT NULL $dc_sd
 ";
 
 
-$union_params = array_merge($dp_pp, $dp_sl, $dp_sl, $dp_sl, $dp_sl, $dp_at, $dp_bl, $dp_bl, $dp_ex);
+$union_params = array_merge($dp_pp, $dp_sl, $dp_sl, $dp_sl, $dp_sl, $dp_at, $dp_bl, $dp_bl, $dp_ex, $dp_sd);
 
 /* ── Outer filters ───────────────────────────────────────────── */
 $outer_where = []; $outer_params = [];
@@ -186,6 +200,7 @@ $stat_s = $pdo->prepare("
         COALESCE(SUM(CASE WHEN j.entry_type='buyer_payment' THEN j.amount END),0) AS total_buyer_payments,
         COALESCE(SUM(CASE WHEN j.entry_type='buyer_advance' THEN j.amount END),0) AS total_buyer_advances,
         COALESCE(SUM(CASE WHEN j.entry_type='expense'       THEN j.amount END),0) AS total_expenses,
+        COALESCE(SUM(CASE WHEN j.entry_type='sale'         THEN j.amount END),0) AS total_sales,
         COUNT(*) AS total_entries,
         COALESCE(SUM(j.amount),0) AS grand_total
     FROM ($union_sql) j
@@ -206,6 +221,7 @@ $type_cfg = [
     'buyer_payment' => ['Buyer Payment',   '#16a34a','#f0fdf4','fa-money-bill-wave'],
     'buyer_advance' => ['Buyer Advance',   '#0891b2','#ecfeff','fa-hand-holding-dollar'],
     'expense'       => ['Expense',         '#dc2626','#fef2f2','fa-receipt'],
+    'sale'          => ['Sale Revenue',    '#10b981','#f0fdf4','fa-chart-line'],
 ];
 $method_labels = ['cash'=>'Cash','bank'=>'Bank','momo'=>'MoMo'];
 $acct_labels   = ['cash'=>'Cash','bank'=>'Bank','momo'=>'MoMo'];
@@ -226,6 +242,7 @@ function get_dr_cr(string $etype, string $party, string $sub): array {
         'buyer_payment'    => [$acct,                 'Buyer Receivable'],
         'buyer_advance'    => [$acct,                 'Buyer Advances'],
         'expense'          => ['Expenses',            $acct],
+        'sale'             => ['Buyer Receivable',   'Mineral Sales Revenue'],
         default            => ['—',                   '—'],
     };
 }
@@ -251,6 +268,7 @@ include 'includes/header.php';
         ['fa-money-bill-wave',      'Buyer Payments',    $totals['total_buyer_payments'],'#16a34a', 'Cash received from buyers'],
         ['fa-hand-holding-dollar',  'Buyer Advances',    $totals['total_buyer_advances'],'#0891b2', 'Prepayments from buyers'],
         ['fa-receipt',              'Expenses',          $totals['total_expenses'],      '#dc2626', 'All operating expenses'],
+        ['fa-chart-line',           'Sale Revenue',      $totals['total_sales'],          '#10b981', 'Total revenue from sales'],
     ];
     foreach($stat_cards as [$icon,$label,$value,$color,$sub]): ?>
     <div style="border:1px solid var(--border);border-left:4px solid <?= $color ?>;border-radius:8px;padding:.75rem 1rem;background:var(--surface,var(--bg))">

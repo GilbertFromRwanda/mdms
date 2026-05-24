@@ -191,6 +191,11 @@ if($view_supplier_id && $view_sup_adv):
     <input type="hidden" name="supplier_id" value="<?= $view_supplier_id ?>">
     <div class="filter-group"><label>From</label><input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>"></div>
     <div class="filter-group"><label>To</label><input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>"></div>
+    <div class="filter-group">
+        <label>Search</label>
+        <input type="search" id="loans-search" placeholder="Type, method, notes…" oninput="filterLoans(this.value)"
+               style="padding:.35rem .7rem;font-size:.82rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+    </div>
     <div class="filter-actions">
         <button type="submit" class="btn btn-primary" style="height:2rem;padding:0 .75rem;font-size:.82rem"><i class="fas fa-filter"></i> Filter</button>
         <?php if($date_from||$date_to): ?><a href="loans-receivable.php?supplier_id=<?= $view_supplier_id ?>" class="btn btn-secondary" style="height:2rem;padding:0 .75rem;font-size:.82rem"><i class="fas fa-xmark"></i> Clear</a><?php endif; ?>
@@ -256,6 +261,8 @@ else:
     <div style="width:4px;height:1.4rem;background:#16a34a;border-radius:2px"></div>
     <span style="font-weight:700;font-size:.9rem">Suppliers — Cash Advances (They Owe Us Back)</span>
     <span style="font-size:.78rem;color:var(--text-muted);font-family:monospace"><?= number_format($stat_advances,2) ?> FRW outstanding</span>
+    <input type="search" id="supplier-search" placeholder="Search supplier…" oninput="filterSuppliers(this.value)"
+           style="margin-left:auto;padding:.35rem .7rem;font-size:.82rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);width:200px">
 </div>
 
 <?php $adv_list=array_filter($sup_adv_raw,fn($r)=>(int)$r['entries']>0); ?>
@@ -263,7 +270,7 @@ else:
 <div class="table-wrap">
     <table>
         <thead><tr><th>Supplier</th><th style="text-align:right">Total Advanced</th><th style="text-align:right">Total Repaid</th><th style="text-align:right">Outstanding</th><th style="text-align:center">Records</th><th style="text-align:center">Status</th><th></th></tr></thead>
-        <tbody>
+        <tbody id="suppliers-tbody">
         <?php foreach($adv_list as $s):
             $bal=(float)$s['balance']; $col=$bal>0?'#dc2626':($bal<0?'#2563eb':'#16a34a');
             $lbl=$bal>0?'Owes Us':($bal<0?'Credit':'Settled');
@@ -503,6 +510,20 @@ function prependRow(r){
         '<td class="text-muted" style="font-size:.78rem">'+esc(r.created_by_name||'')+'</td>'+
         '<td><button class="btn btn-danger" style="padding:.3rem .6rem;font-size:.75rem" onclick="deleteLoan('+r.id+',this)"><i class="fas fa-trash"></i></button></td>';
     tbody.insertBefore(tr,tbody.firstChild);
+}
+
+function filterSuppliers(q){
+    q=q.toLowerCase();
+    document.querySelectorAll('#suppliers-tbody tr').forEach(tr=>{
+        tr.style.display=tr.querySelector('td strong')?.textContent.toLowerCase().includes(q)?'':'none';
+    });
+}
+
+function filterLoans(q){
+    q=q.toLowerCase();
+    document.querySelectorAll('#loans-tbody tr:not(#empty-row)').forEach(tr=>{
+        tr.style.display=tr.textContent.toLowerCase().includes(q)?'':'none';
+    });
 }
 
 function deleteLoan(id,btn){

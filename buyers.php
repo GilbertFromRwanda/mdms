@@ -86,44 +86,51 @@ include 'includes/header.php';
 
 <div class="page-header">
     <h2><i class="fas fa-handshake" style="margin-right:.4rem;color:var(--text-muted)"></i>Buyer Management</h2>
-    <button class="btn btn-primary" style="background:#10b981;border-color:#10b981" onclick="togglePanel()">
+    <button class="btn btn-primary" style="background:#10b981;border-color:#10b981" onclick="openModal()">
         <i class="fas fa-plus"></i> Add Buyer
     </button>
 </div>
 
-<!-- Add form -->
-<div class="slide-panel" id="buy-panel">
-    <h3><i class="fas fa-plus-circle" style="margin-right:.4rem"></i>Register New Buyer</h3>
-    <form id="buy-form">
-        <div class="form-grid form-grid-2">
-            <div class="form-group">
-                <label>Company / Person Name</label>
-                <input type="text" name="name" placeholder="ABC Minerals Ltd." required>
-            </div>
-            <div class="form-group">
-                <label>Contact Person</label>
-                <input type="text" name="contact" placeholder="Full name">
-            </div>
-            <div class="form-group">
-                <label>Phone</label>
-                <input type="text" name="phone" placeholder="+250 7XX XXX XXX">
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" name="email" placeholder="buyer@company.com">
-            </div>
-            <div class="form-group" style="grid-column:1/-1">
-                <label>Address</label>
-                <textarea name="address" placeholder="Full address…"></textarea>
-            </div>
+<!-- Add Buyer Modal -->
+<div class="modal-backdrop" id="buy-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-header">
+            <h3><i class="fas fa-plus-circle" style="margin-right:.4rem;color:#10b981"></i>Register New Buyer</h3>
+            <button class="modal-close" onclick="closeModal()" type="button"><i class="fas fa-xmark"></i></button>
         </div>
-        <div class="slide-panel-btns">
-            <button type="submit" id="buy-save-btn" class="btn btn-primary" style="background:#10b981;border-color:#10b981">
+        <div class="modal-body">
+            <form id="buy-form">
+                <div class="form-grid form-grid-2">
+                    <div class="form-group">
+                        <label>Company / Person Name</label>
+                        <input type="text" name="name" placeholder="ABC Minerals Ltd." required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Person</label>
+                        <input type="text" name="contact" placeholder="Full name">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="text" name="phone" placeholder="+250 7XX XXX XXX">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" placeholder="buyer@company.com">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label>Address</label>
+                        <textarea name="address" placeholder="Full address…"></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="submit" form="buy-form" id="buy-save-btn" class="btn btn-primary" style="background:#10b981;border-color:#10b981">
                 <i class="fas fa-save"></i> Save Buyer
             </button>
-            <button type="button" class="btn btn-secondary" onclick="togglePanel()">Cancel</button>
         </div>
-    </form>
+    </div>
 </div>
 
 <!-- Filter bar -->
@@ -198,9 +205,15 @@ include 'includes/header.php';
 </div>
 
 <script>
-function togglePanel(){
-    document.getElementById('buy-panel').classList.toggle('open');
+function openModal(){
+    document.getElementById('buy-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
 }
+function closeModal(){
+    document.getElementById('buy-modal').classList.remove('open');
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
 
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -233,7 +246,7 @@ document.getElementById('buy-form').addEventListener('submit', function(e){
         if(d.success){
             showAlert('success', d.message);
             prependRow(d.buyer);
-            togglePanel();
+            closeModal();
             this.reset();
         } else {
             showAlert('error', d.message);
