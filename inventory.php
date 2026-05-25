@@ -4,10 +4,13 @@ if(!isLoggedIn()){ header('Location: login.php'); exit; }
 
 $page_title = 'Inventory';
 
+$today = date('Y-m-d');
 $filters = [
     'search' => trim($_GET['search'] ?? ''),
     'status' => $_GET['status']      ?? '',
     'unit'   => $_GET['unit']        ?? '',
+    'from'   => $_GET['from']        ?? $today,
+    'to'     => $_GET['to']          ?? $today,
 ];
 
 $where = []; $params = [];
@@ -19,18 +22,23 @@ if($filters['status'] === 'good')   { $where[] = 'i.current_stock >= 500'; }
 $where_sql = $where ? 'WHERE '.implode(' AND ', $where) : '';
 
 $stmt = $pdo->prepare("
-    SELECT i.*, mt.name AS mineral_name, mt.unit
+    SELECT i.*, mt.name AS mineral_name, mt.unit,
+           CAST(AVG(pd.sample) AS DECIMAL(10,2)) AS avg_sample
     FROM inventory i
     JOIN mineral_types mt ON i.mineral_type_id = mt.id
+    LEFT JOIN purchase_details pd ON pd.mineral_id = i.mineral_type_id
+        AND pd.purchase_date BETWEEN ? AND ?
     $where_sql
+    GROUP BY i.id, mt.name, mt.unit
     ORDER BY i.current_stock DESC
 ");
-$stmt->execute($params);
+$stmt->execute([$filters['from'], $filters['to'], ...$params]);
 $inventory = $stmt->fetchAll();
 
 $units_raw = $pdo->query("SELECT DISTINCT unit FROM mineral_types ORDER BY unit")->fetchAll(PDO::FETCH_COLUMN);
 
-$has_filters = (bool)array_filter($filters);
+$has_filters = $filters['search'] || $filters['status'] || $filters['unit']
+             || $filters['from'] !== $today || $filters['to'] !== $today;
 $maxStock = count($inventory) ? max(array_column($inventory,'current_stock')) : 1;
 if($maxStock == 0) $maxStock = 1;
 
@@ -70,6 +78,14 @@ include 'includes/header.php';
         </select>
     </div>
     <?php endif; ?>
+    <div class="filter-group">
+        <label>Sample From</label>
+        <input type="date" name="from" value="<?= htmlspecialchars($filters['from']) ?>">
+    </div>
+    <div class="filter-group">
+        <label>Sample To</label>
+        <input type="date" name="to" value="<?= htmlspecialchars($filters['to']) ?>">
+    </div>
     <div class="filter-actions">
         <button type="submit" class="btn btn-primary" style="height:2rem;padding:0 .75rem;font-size:.82rem">
             <i class="fas fa-filter"></i> Filter
@@ -93,8 +109,8 @@ include 'includes/header.php';
                 <th>Mineral Type</th>
                 <th>Current Stock</th>
                 <th>Unit</th>
-                <th style="min-width:160px">Level</th>
                 <th>Status</th>
+                <th>Avg. Sample(%)</th>
                 <th>Last Updated</th>
             </tr>
         </thead>
@@ -112,14 +128,6 @@ include 'includes/header.php';
                 </td>
                 <td class="text-muted"><?= htmlspecialchars($item['unit']) ?></td>
                 <td>
-                    <div class="stock-bar-wrap">
-                        <div class="stock-bar">
-                            <div class="stock-bar-fill <?= $cls ?>" style="width:<?= $pct ?>%"></div>
-                        </div>
-                        <span class="stock-pct"><?= $pct ?>%</span>
-                    </div>
-                </td>
-                <td>
                     <?php if($isLow): ?>
                         <span class="badge badge-danger"><i class="fas fa-triangle-exclamation" style="margin-right:.2rem"></i>Low</span>
                     <?php elseif($cls==='medium'): ?>
@@ -128,6 +136,7 @@ include 'includes/header.php';
                         <span class="badge badge-success">Good</span>
                     <?php endif; ?>
                 </td>
+                <td class="text-muted"><?= $item['avg_sample'] !== null ? number_format((float)$item['avg_sample'], 2) : '—' ?></td>
                 <td class="text-muted font-mono" style="font-size:.78rem"><?= $item['last_updated'] ?></td>
             </tr>
             <?php endforeach; ?>

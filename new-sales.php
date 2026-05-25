@@ -210,6 +210,11 @@ include 'includes/header.php';
                     <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div style="margin-top:.4rem">
+                    <a href="#" onclick="event.preventDefault();openQuickBuyer()" style="font-size:.78rem;color:#10b981;text-decoration:none;font-weight:500">
+                        <i class="fas fa-user-plus"></i> Register new buyer
+                    </a>
+                </div>
                 <?php if(empty($buyers)): ?>
                 <small style="color:#f59e0b"><i class="fas fa-triangle-exclamation"></i> No buyers found — add buyers first.</small>
                 <?php endif; ?>
@@ -230,7 +235,7 @@ include 'includes/header.php';
     </div>
 
     <!-- Minerals -->
-    <div style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--surface,var(--bg))">
+    <div id="minerals-sold-section" style="display:none;border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--surface,var(--bg))">
         <div style="font-weight:600;font-size:.82rem;margin-bottom:.85rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">
             <i class="fas fa-gem"></i> Minerals Sold
         </div>
@@ -294,12 +299,53 @@ include 'includes/header.php';
         <a href="sales.php" class="btn btn-secondary">
             <i class="fas fa-xmark"></i> Cancel
         </a>
-        <button type="submit" id="sale-save-btn" class="btn btn-primary" style="background:#10b981;border-color:#10b981">
+        <button type="submit" id="sale-save-btn" class="btn btn-primary" disabled
+                style="background:var(--text-muted,#94a3b8);border-color:var(--text-muted,#94a3b8);cursor:not-allowed"
+                title="Select at least one mineral to enable">
             <i class="fas fa-save"></i> Save Sale
         </button>
     </div>
 
 </form>
+
+<!-- Quick-register buyer modal -->
+<div class="modal-backdrop" id="qb-modal" onclick="if(event.target===this)closeQuickBuyer()">
+    <div class="modal" style="max-width:480px">
+        <div class="modal-header">
+            <h3><i class="fas fa-user-plus" style="margin-right:.4rem;color:#10b981"></i>Register New Buyer</h3>
+            <button class="modal-close" type="button" onclick="closeQuickBuyer()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+            <div id="qb-alert" class="alert" style="display:none;margin-bottom:.75rem"></div>
+            <form id="qb-form">
+                <div class="form-grid form-grid-2">
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label>Company / Buyer Name <span style="color:#dc2626">*</span></label>
+                        <input type="text" name="name" id="qb-name" placeholder="XYZ Minerals Ltd." required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Person</label>
+                        <input type="text" name="contact" id="qb-contact" placeholder="Full name">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="text" name="phone" id="qb-phone" placeholder="+250 …">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" id="qb-email" placeholder="contact@company.com">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeQuickBuyer()">Cancel</button>
+            <button type="button" id="qb-save-btn" class="btn btn-primary" style="background:#10b981;border-color:#10b981" onclick="submitQuickBuyer()">
+                <i class="fas fa-save"></i> Save &amp; Select
+            </button>
+        </div>
+    </div>
+</div>
 
 <script>
 const costDefaults    = <?= json_encode($cost_defaults) ?>;
@@ -401,6 +447,7 @@ function toggleMineralCard(cb) {
         const card = document.getElementById('card-'+id);
         if (card) card.remove();
         updateGlobalSummary();
+        refreshSaveBtn();
     }
 }
 
@@ -469,6 +516,7 @@ function calcCard(id) {
 
     cardSummary[id] = { revenue, cost, benefit, qty };
     updateGlobalSummary();
+    refreshSaveBtn();
 }
 
 /* ── Benefit summary ────────────────────────────────────────── */
@@ -520,6 +568,7 @@ function updateGlobalSummary() {
 
 function onBuyerChange() {
     const bid = document.querySelector('[name="buyer_id"]').value;
+    document.getElementById('minerals-sold-section').style.display = bid ? '' : 'none';
     const el  = document.getElementById('buyer-balance-info');
     if (!el) return;
     if (!bid) { el.style.display = 'none'; return; }
@@ -539,6 +588,43 @@ function onBuyerChange() {
 
 function onCurrencyChange() {
     Object.keys(cardCats).forEach(id => calcCard(id));
+}
+
+function refreshSaveBtn() {
+    const btn = document.getElementById('sale-save-btn');
+    if (!btn) return;
+
+    const hasQtyErrors  = Object.keys(cardErrors).length > 0;
+    const noMinerals    = Object.keys(cardCats).length === 0;
+    const shouldDisable = hasQtyErrors || noMinerals;
+
+    let reason = '';
+    if (noMinerals)       reason = 'Select at least one mineral to enable';
+    else if (hasQtyErrors) reason = 'Fix quantity errors before saving';
+
+    btn.disabled          = shouldDisable;
+    btn.title             = reason;
+    btn.style.background  = shouldDisable ? 'var(--text-muted,#94a3b8)' : '#10b981';
+    btn.style.borderColor = shouldDisable ? 'var(--text-muted,#94a3b8)' : '#10b981';
+    btn.style.cursor      = shouldDisable ? 'not-allowed' : '';
+}
+
+function resetSaleForm() {
+    document.getElementById('sale-form').reset();
+    document.getElementById('mineral-cards').innerHTML = '';
+    document.querySelectorAll('#mineral-checks input[type="checkbox"]').forEach(cb => cb.checked = false);
+    for (const k in cardCats)    delete cardCats[k];
+    for (const k in cardNames)   delete cardNames[k];
+    for (const k in cardSummary) delete cardSummary[k];
+    for (const k in cardErrors)  delete cardErrors[k];
+    document.getElementById('sale-pay-rows').innerHTML = '';
+    salePayRowN = 0;
+    globalTotalRevenue = 0;
+    ['global-summary', 'sale-pay-summary'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+    refreshSaveBtn();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /* ── Payment rows ───────────────────────────────────────────── */
@@ -614,6 +700,77 @@ function recalcSalePay() {
     }
 }
 
+/* ── Quick buyer registration ───────────────────────────────── */
+function openQuickBuyer() {
+    document.getElementById('qb-form').reset();
+    document.getElementById('qb-alert').style.display = 'none';
+    document.getElementById('qb-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => document.getElementById('qb-name').focus(), 80);
+}
+
+function closeQuickBuyer() {
+    document.getElementById('qb-modal').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function submitQuickBuyer() {
+    const nameEl = document.getElementById('qb-name');
+    if (!nameEl.value.trim()) { nameEl.focus(); return; }
+
+    const btn = document.getElementById('qb-save-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+    const fd = new FormData(document.getElementById('qb-form'));
+    fd.append('add', '1');
+
+    fetch('buyers.php', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            const b   = d.buyer;
+            const sel = document.querySelector('[name="buyer_id"]');
+            const opt = document.createElement('option');
+            opt.value       = b.id;
+            opt.textContent = b.name;
+            sel.appendChild(opt);
+            sel.value = b.id;
+            onBuyerChange();
+            closeQuickBuyer();
+            showAlert('success', 'Buyer <strong>' + esc(b.name) + '</strong> registered and selected.');
+        } else {
+            const al = document.getElementById('qb-alert');
+            al.className = 'alert alert-error';
+            al.innerHTML = '<i class="fas fa-circle-xmark"></i> ' + d.message;
+            al.style.display = 'flex';
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save &amp; Select';
+    })
+    .catch(() => {
+        const al = document.getElementById('qb-alert');
+        al.className = 'alert alert-error';
+        al.innerHTML = '<i class="fas fa-circle-xmark"></i> Network error. Please try again.';
+        al.style.display = 'flex';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save &amp; Select';
+    });
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('qb-modal').classList.contains('open'))
+        closeQuickBuyer();
+});
+
+document.getElementById('qb-form').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitQuickBuyer(); }
+});
+
 /* ── Submit ─────────────────────────────────────────────────── */
 document.getElementById('sale-form').addEventListener('submit', function(e) {
     e.preventDefault();
@@ -640,7 +797,9 @@ document.getElementById('sale-form').addEventListener('submit', function(e) {
     .then(r => r.json())
     .then(d => {
         if (d.success) {
-            window.location.href = 'sales.php?created=' + d.count;
+            const plural = d.count > 1 ? d.count + ' sales' : 'sale';
+            showAlert('success', '<strong>' + plural + '</strong> saved successfully. You can record another sale below.');
+            resetSaleForm();
         } else {
             showAlert('error', d.message);
             btn.disabled = false;

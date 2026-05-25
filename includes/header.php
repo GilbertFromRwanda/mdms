@@ -25,11 +25,30 @@
         <div class="nav-section-label">Main</div>
         <a href="dashboard.php"    class="nav-item <?= $cur==='dashboard'    ?'active':'' ?>"><i class="fas fa-gauge-high"></i> Dashboard</a>
         <a href="inventory.php"    class="nav-item <?= $cur==='inventory'    ?'active':'' ?>"><i class="fas fa-warehouse"></i> Inventory</a>
-        <a href="batches.php"      class="nav-item <?= $cur==='batches'||$cur==='new-purchase' ?'active':'' ?>"><i class="fas fa-boxes-stacked"></i> Purchase</a>
+        <div class="nav-group <?= in_array($cur,['batches','new-purchase'])?'open':'' ?>">
+            <div class="nav-item nav-parent" onclick="toggleNavGroup(this.parentElement)">
+                <span class="nav-parent-left"><i class="fas fa-boxes-stacked"></i> Purchase</span>
+                <i class="fas fa-chevron-down nav-arrow"></i>
+            </div>
+            <div class="nav-sub">
+                <a href="batches.php"      class="nav-item nav-sub-item <?= $cur==='batches'      ?'active':'' ?>"><i class="fas fa-list"></i> View All</a>
+                <a href="new-purchase.php" class="nav-item nav-sub-item <?= $cur==='new-purchase' ?'active':'' ?>"><i class="fas fa-plus"></i> New Purchase</a>
+            </div>
+        </div>
 
-        <a href="sales.php"        class="nav-item <?= $cur==='sales'||$cur==='new-sales'   ?'active':'' ?>"><i class="fas fa-chart-line"></i> Sales</a>
+        <div class="nav-group <?= in_array($cur,['sales','new-sales'])?'open':'' ?>">
+            <div class="nav-item nav-parent" onclick="toggleNavGroup(this.parentElement)">
+                <span class="nav-parent-left"><i class="fas fa-chart-line"></i> Sales</span>
+                <i class="fas fa-chevron-down nav-arrow"></i>
+            </div>
+            <div class="nav-sub">
+                <a href="sales.php"     class="nav-item nav-sub-item <?= $cur==='sales'     ?'active':'' ?>"><i class="fas fa-list"></i> View All</a>
+                <a href="new-sales.php" class="nav-item nav-sub-item <?= $cur==='new-sales' ?'active':'' ?>"><i class="fas fa-plus"></i> New Sale</a>
+            </div>
+        </div>
         <a href="buyers.php"       class="nav-item <?= $cur==='buyers'       ?'active':'' ?>"><i class="fas fa-handshake"></i> Buyers</a>
                 <a href="suppliers.php"    class="nav-item <?= $cur==='suppliers'    ?'active':'' ?>"><i class="fas fa-building"></i> Suppliers</a>
+        <a href="supply-stock.php" class="nav-item <?= $cur==='supply-stock' ?'active':'' ?>"><i class="fas fa-warehouse"></i> Supply Stock</a>
         <a href="loans-payable.php"    class="nav-item <?= $cur==='loans-payable'    ?'active':'' ?>"><i class="fas fa-arrow-up"></i> Loan Payable</a>
         <a href="loans-receivable.php" class="nav-item <?= $cur==='loans-receivable' ?'active':'' ?>"><i class="fas fa-arrow-down"></i> Loan Receivable</a>
         <a href="accounts.php"     class="nav-item <?= $cur==='accounts'     ?'active':'' ?>"><i class="fas fa-building-columns"></i> Accounts</a>
@@ -65,3 +84,8 @@
         <span class="topbar-meta"><i class="fas fa-calendar-days" style="margin-right:.35rem"></i><?= date('d M Y') ?></span>
     </header>
     <main class="page-content">
+<script>
+function toggleNavGroup(group) {
+    group.classList.toggle('open');
+}
+</script>

@@ -11,9 +11,7 @@ $extra_head  = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/ch
 $cur_month_start  = date('Y-m-01');
 $next_month_start = date('Y-m-01', strtotime('+1 month'));
 $prev_month_start = date('Y-m-01', strtotime('-1 month'));
-
-$kpi = $pdo->query("
-    SELECT
+$kpi_sql="   SELECT
         /* revenue & profit this month */
         COALESCE((SELECT SUM(total_revenue) FROM sale_details
                    WHERE sale_date >= '$cur_month_start'
@@ -56,8 +54,10 @@ $kpi = $pdo->query("
         /* total purchase cost this month */
         COALESCE((SELECT SUM(total_cost) FROM sale_details
                    WHERE sale_date >= '$cur_month_start'
-                     AND sale_date <  '$next_month_start'), 0) AS sold_cost
-")->fetch();
+                     AND sale_date <  '$next_month_start'), 0) AS sold_cost";
+$kpi = $pdo->query($kpi_sql)->fetch();
+
+
 
 /* ── Revenue & cost — last 6 months ─────────────────────────────── */
 $chart_rows = $pdo->query("
@@ -93,6 +93,50 @@ $inventory = $pdo->query("
 ")->fetchAll();
 $maxStock = count($inventory) ? max(array_column($inventory,'current_stock')) : 1;
 if ($maxStock == 0) $maxStock = 1;
+
+/* ── Weekly purchases vs sales per mineral (Mon–Sun) ────────────── */
+$day_of_week = (int)date('N');               // 1=Mon … 7=Sun
+$week_start  = date('Y-m-d', strtotime('-' . ($day_of_week - 1) . ' days'));
+$week_end    = date('Y-m-d', strtotime('+' . (7 - $day_of_week) . ' days'));
+
+$wk_minerals = $pdo->query("SELECT id, name FROM mineral_types ORDER BY name")->fetchAll();
+
+$wk_buy_raw = $pdo->query("
+    SELECT b.received_date, mt.name AS mineral, SUM(b.quantity) AS kg
+    FROM batches b
+    JOIN mineral_types mt ON b.mineral_type_id = mt.id
+    WHERE b.received_date BETWEEN '$week_start' AND '$week_end'
+    GROUP BY b.received_date, mt.name
+")->fetchAll();
+
+$wk_sell_raw = $pdo->query("
+    SELECT sd.sale_date, mt.name AS mineral, SUM(sd.qty) AS kg
+    FROM sale_details sd
+    JOIN sales s ON sd.sale_id = s.id
+    JOIN mineral_types mt ON s.mineral_type_id = mt.id
+    WHERE sd.sale_date BETWEEN '$week_start' AND '$week_end'
+    GROUP BY sd.sale_date, mt.name
+")->fetchAll();
+
+$wk_buy_idx = $wk_sell_idx = [];
+foreach ($wk_buy_raw  as $r) $wk_buy_idx[$r['mineral']][$r['received_date']] = (float)$r['kg'];
+foreach ($wk_sell_raw as $r) $wk_sell_idx[$r['mineral']][$r['sale_date']]    = (float)$r['kg'];
+
+$week_labels = [];
+for ($d = 0; $d < 7; $d++)
+    $week_labels[] = date('D d M', strtotime($week_start . " +$d days"));
+
+$week_mineral_buy = $week_mineral_sell = [];
+foreach ($wk_minerals as $m) {
+    $buy = $sell = [];
+    for ($d = 0; $d < 7; $d++) {
+        $date   = date('Y-m-d', strtotime($week_start . " +$d days"));
+        $buy[]  = (float)($wk_buy_idx[$m['name']][$date]  ?? 0);
+        $sell[] = (float)($wk_sell_idx[$m['name']][$date] ?? 0);
+    }
+    $week_mineral_buy[$m['name']]  = $buy;
+    $week_mineral_sell[$m['name']] = $sell;
+}
 
 /* ── Low-stock minerals (< 500 kg) ──────────────────────────────── */
 $low_stock = $pdo->query("
@@ -158,6 +202,13 @@ $prof_pct = pctChange($kpi['profit_month'],  $kpi['profit_prev']);
 require 'includes/header.php';
 ?>
 
+<!-- ── KPI toolbar ────────────────────────────────────────────────── -->
+<div style="display:flex;justify-content:flex-end;margin-bottom:.6rem">
+    <button id="toggleAmt" onclick="toggleAmounts()" style="background:#1e293b;color:#fff;border:none;border-radius:var(--r);padding:.35rem .85rem;font-size:.78rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:.4rem">
+        <i class="fas fa-expand-alt"></i> Show full amounts
+    </button>
+</div>
+
 <!-- ── KPI Row ────────────────────────────────────────────────────── -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.25rem">
 
@@ -165,7 +216,7 @@ require 'includes/header.php';
     <div style="background:#be185d;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
         <i class="fas fa-calendar-day" style="font-size:1.4rem;opacity:.85"></i>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.7;margin-bottom:-.1rem"><?= date('d M Y') ?></div>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['revenue_today']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><span class="money-amt" data-short="<?= fmt($kpi['revenue_today']) ?>" data-full="<?= number_format((float)$kpi['revenue_today']) ?>"><?= fmt($kpi['revenue_today']) ?></span> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Today's Revenue</div>
     </div>
 
@@ -173,7 +224,7 @@ require 'includes/header.php';
     <div style="background:#1d4ed8;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
         <i class="fas fa-calendar-month" style="font-size:1.4rem;opacity:.85"></i>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.7;margin-bottom:-.1rem"><?= date('F Y') ?></div>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['revenue_month']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><span class="money-amt" data-short="<?= fmt($kpi['revenue_month']) ?>" data-full="<?= number_format((float)$kpi['revenue_month']) ?>"><?= fmt($kpi['revenue_month']) ?></span> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Monthly Revenue</div>
         <?php if ($rev_pct !== null): ?>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
@@ -186,7 +237,7 @@ require 'includes/header.php';
     <div style="background:#059669;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
         <i class="fas fa-chart-line" style="font-size:1.4rem;opacity:.85"></i>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.7;margin-bottom:-.1rem"><?= date('F Y') ?></div>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1;color:<?= $kpi['profit_month']>=0?'#fff':'#fca5a5' ?>"><?= fmt($kpi['profit_month']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1;color:<?= $kpi['profit_month']>=0?'#fff':'#fca5a5' ?>"><span class="money-amt" data-short="<?= fmt($kpi['profit_month']) ?>" data-full="<?= number_format((float)$kpi['profit_month']) ?>"><?= fmt($kpi['profit_month']) ?></span> <span style="font-size:.65rem;font-weight:600;opacity:.8">FRW</span></div>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Monthly Net Profit</div>
         <?php if ($prof_pct !== null): ?>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
@@ -210,7 +261,7 @@ require 'includes/header.php';
         <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmtKg($kpi['purchased_kg']) ?> <span style="font-size:.65rem;font-weight:600;opacity:.8">kg</span></div>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Purchased This Month</div>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
-            <?= fmt($kpi['purchased_amount']) ?> FRW paid
+            <span class="money-amt" data-short="<?= fmt($kpi['purchased_amount']) ?>" data-full="<?= number_format((float)$kpi['purchased_amount']) ?>"><?= fmt($kpi['purchased_amount']) ?></span> FRW paid
         </div>
     </div>
 
@@ -219,17 +270,32 @@ require 'includes/header.php';
         <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmtKg($kpi['sold_kg']) ?></div>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Sold This Month</div>
         <div style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem">
-            <?= fmt($kpi['sold_cost']) ?> FRW cost
+            <span class="money-amt" data-short="<?= fmt($kpi['sold_cost']) ?>" data-full="<?= number_format((float)$kpi['sold_cost']) ?>"><?= fmt($kpi['sold_cost']) ?></span> FRW cost
         </div>
     </div>
 
     <div style="background:<?= $kpi['loans_balance']>0?'#dc2626':'#16a34a' ?>;border-radius:var(--r);padding:1.25rem 1rem;text-align:center;color:#fff;display:flex;flex-direction:column;align-items:center;gap:.4rem">
         <i class="fas fa-hand-holding-dollar" style="font-size:1.4rem;opacity:.85"></i>
-        <div style="font-size:1.6rem;font-weight:800;line-height:1"><?= fmt($kpi['loans_balance']) ?></div>
+        <div style="font-size:1.6rem;font-weight:800;line-height:1"><span class="money-amt" data-short="<?= fmt($kpi['loans_balance']) ?>" data-full="<?= number_format((float)$kpi['loans_balance']) ?>"><?= fmt($kpi['loans_balance']) ?></span></div>
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.8">Unpaid Loans · FRW</div>
         <a href="loans.php" style="font-size:.75rem;background:rgba(255,255,255,.15);border-radius:20px;padding:.15rem .6rem;margin-top:.1rem;color:#fff;text-decoration:none">
             View details
         </a>
+    </div>
+</div>
+
+<!-- ── Weekly purchases vs sales chart ───────────────────────────── -->
+<div class="card" style="margin-bottom:1.25rem">
+    <div class="card-header">
+        <span><i class="fas fa-calendar-week" style="margin-right:.4rem;color:var(--text-muted)"></i>
+            This Week — Purchased vs Sold (kg)
+            <span style="font-size:.72rem;font-weight:400;color:var(--text-muted);margin-left:.5rem">
+                <?= date('d M', strtotime($week_start)) ?> – <?= date('d M', strtotime($week_end)) ?>
+            </span>
+        </span>
+    </div>
+    <div style="padding:1rem 1.25rem">
+        <div style="position:relative;height:220px"><canvas id="weeklyChart"></canvas></div>
     </div>
 </div>
 
@@ -442,6 +508,70 @@ require 'includes/header.php';
 
 <?php
 $extra_script = "
+let amountsExpanded = false;
+function toggleAmounts() {
+    amountsExpanded = !amountsExpanded;
+    document.querySelectorAll('.money-amt').forEach(el => {
+        el.textContent = amountsExpanded ? el.dataset.full : el.dataset.short;
+    });
+    const btn = document.getElementById('toggleAmt');
+    btn.innerHTML = amountsExpanded
+        ? '<i class=\"fas fa-compress-alt\"></i> Abbreviate amounts'
+        : '<i class=\"fas fa-expand-alt\"></i> Show full amounts';
+}
+
+const wkLabels      = " . json_encode($week_labels) . ";
+const wkMineralBuy  = " . json_encode($week_mineral_buy) . ";
+const wkMineralSell = " . json_encode($week_mineral_sell) . ";
+
+if(document.getElementById('weeklyChart')){
+    const wkColors  = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
+    const wkNames   = Object.keys(wkMineralBuy);
+    const wkDatasets = [];
+
+    wkNames.forEach((name, i) => {
+        const hex = wkColors[i % wkColors.length];
+        wkDatasets.push({
+            label: name + ' — Bought',
+            data: wkMineralBuy[name],
+            backgroundColor: hex,
+            stack: 'buy',
+            borderRadius: 3,
+            borderSkipped: false
+        });
+    });
+    wkNames.forEach((name, i) => {
+        const hex = wkColors[i % wkColors.length];
+        wkDatasets.push({
+            label: name + ' — Sold',
+            data: wkMineralSell[name],
+            backgroundColor: hex + '70',
+            borderColor: hex,
+            borderWidth: 1,
+            stack: 'sell',
+            borderRadius: 3,
+            borderSkipped: false
+        });
+    });
+
+    new Chart(document.getElementById('weeklyChart'), {
+        type: 'bar',
+        data: { labels: wkLabels, datasets: wkDatasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { font:{size:11}, boxWidth:12, padding:10 } },
+                tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + ' kg' } }
+            },
+            scales: {
+                x: { stacked: true, grid:{display:false}, ticks:{font:{size:11}} },
+                y: { stacked: true, grid:{color:'rgba(0,0,0,.05)'}, ticks:{font:{size:11}, callback: v => v + ' kg'}, beginAtZero:true }
+            }
+        }
+    });
+}
+
 const revLabels  = " . json_encode($chart_labels) . ";
 const revData    = " . json_encode(array_map('floatval', $chart_revenue)) . ";
 const costData   = " . json_encode(array_map('floatval', $chart_cost)) . ";

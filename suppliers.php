@@ -18,7 +18,7 @@ if(isset($_SERVER['HTTP_X_REQUESTED_WITH'])){
             $stmt->execute([
                 $code, $_POST['name'], $_POST['contact_person'],
                 $_POST['phone'], $_POST['email'],
-                $_POST['license_number'], $_POST['address']
+                $_POST['license_number'], $_POST['address'] ?? ''
             ]);
             $id = $pdo->lastInsertId();
             logAction($pdo,$_SESSION['user_id'],'CREATE','suppliers',$id,"Added supplier: {$_POST['name']}");

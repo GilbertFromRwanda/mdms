@@ -440,15 +440,16 @@ else:
     <?php if($buyer_list): ?>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Buyer</th><th style="text-align:right">Total Credit</th><th style="text-align:right">Total Paid</th><th style="text-align:right">Outstanding</th><th style="text-align:center">Records</th><th style="text-align:center">Status</th><th></th></tr></thead>
+            <thead><tr><th style="width:2rem">#</th><th>Buyer</th><th style="text-align:right">Total Credit</th><th style="text-align:right">Total Paid</th><th style="text-align:right">Outstanding</th><th style="text-align:center">Records</th><th style="text-align:center">Status</th><th></th></tr></thead>
             <tbody id="buyer-list-tbody">
-            <?php foreach($buyer_list as $b):
+            <?php $bi=0; foreach($buyer_list as $b):
                 $bal=$b['balance']; $col=$bal>0?'#dc2626':($bal<0?'#2563eb':'#16a34a');
                 $lbl=$bal>0?'Owes Us':($bal<0?'Overpaid':'Settled');
                 $bdg=$bal>0?'badge-danger':($bal<0?'badge-primary':'badge-success');
             ?>
             <tr data-name="<?= htmlspecialchars(strtolower($b['name'])) ?>" style="cursor:pointer" onclick="location.href='loans-payable.php?buyer_id=<?= $b['id'] ?>'"
                 onmouseover="this.style.background='var(--border)22'" onmouseout="this.style.background=''">
+                <td class="text-muted" style="font-size:.78rem"><?= ++$bi ?></td>
                 <td><strong><?= htmlspecialchars($b['name']) ?></strong></td>
                 <td style="text-align:right;font-family:monospace;color:#dc2626;font-weight:600"><?= number_format($b['total_loaned'],2) ?></td>
                 <td style="text-align:right;font-family:monospace;color:#16a34a;font-weight:600"><?= number_format($b['total_repaid'],2) ?></td>
@@ -458,7 +459,7 @@ else:
                 <td onclick="event.stopPropagation()"><a href="loans-payable.php?buyer_id=<?= $b['id'] ?>" class="btn btn-secondary" style="padding:.3rem .65rem;font-size:.78rem"><i class="fas fa-eye"></i> View</a></td>
             </tr>
             <?php endforeach; ?>
-            <tr class="list-empty" style="display:none"><td colspan="7" style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.85rem">No buyers match your search.</td></tr>
+            <tr class="list-empty" style="display:none"><td colspan="8" style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.85rem">No buyers match your search.</td></tr>
             </tbody>
         </table>
     </div>
@@ -475,18 +476,19 @@ else:
     <?php if($def_list): ?>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Supplier</th><th style="text-align:right">Deferred Amount</th><th style="text-align:center">Records</th><th></th></tr></thead>
+            <thead><tr><th style="width:2rem">#</th><th>Supplier</th><th style="text-align:right">Deferred Amount</th><th style="text-align:center">Records</th><th></th></tr></thead>
             <tbody id="supplier-list-tbody">
-            <?php foreach($def_list as $s): ?>
+            <?php $si=0; foreach($def_list as $s): ?>
             <tr data-name="<?= htmlspecialchars(strtolower($s['name'])) ?>" style="cursor:pointer" onclick="location.href='loans-payable.php?supplier_id=<?= $s['id'] ?>'"
                 onmouseover="this.style.background='var(--border)22'" onmouseout="this.style.background=''">
+                <td class="text-muted" style="font-size:.78rem"><?= ++$si ?></td>
                 <td><strong><?= htmlspecialchars($s['name']) ?></strong></td>
                 <td style="text-align:right;font-family:monospace;font-weight:700;color:#ea580c"><?= number_format($s['balance'],2) ?> <span style="font-size:.7rem;font-weight:500">FRW</span></td>
                 <td style="text-align:center"><span class="badge" style="background:var(--border);color:var(--text-muted)"><?= (int)$s['entries'] ?></span></td>
                 <td onclick="event.stopPropagation()"><a href="loans-payable.php?supplier_id=<?= $s['id'] ?>" class="btn btn-secondary" style="padding:.3rem .65rem;font-size:.78rem"><i class="fas fa-eye"></i> View</a></td>
             </tr>
             <?php endforeach; ?>
-            <tr class="list-empty" style="display:none"><td colspan="4" style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.85rem">No suppliers match your search.</td></tr>
+            <tr class="list-empty" style="display:none"><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.85rem">No suppliers match your search.</td></tr>
             </tbody>
         </table>
     </div>

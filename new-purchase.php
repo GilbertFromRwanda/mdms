@@ -246,6 +246,11 @@ include 'includes/header.php';
                     <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name'] . ($s['phone'] ? ' — ' . $s['phone'] : '')) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div style="margin-top:.4rem">
+                    <a href="#" onclick="event.preventDefault();openQuickSupplier()" style="font-size:.78rem;color:var(--primary);text-decoration:none;font-weight:500">
+                        <i class="fas fa-user-plus"></i> Register new supplier
+                    </a>
+                </div>
                 <div id="deferred-balance-info" style="display:none;margin-top:.45rem;padding:.4rem .65rem;border-radius:6px;font-size:.8rem;font-weight:600;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa">
                     <i class="fas fa-hourglass-half"></i> <span id="deferred-balance-text"></span>
                     &nbsp;·&nbsp;<a href="#" id="deferred-balance-link" style="color:#ea580c;font-size:.75rem">View details</a>
@@ -266,7 +271,7 @@ include 'includes/header.php';
     </div>
 
     <!-- Minerals -->
-    <div style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--surface,var(--bg))">
+    <div id="minerals-section" style="display:none;border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--surface,var(--bg))">
         <div style="font-weight:600;font-size:.82rem;margin-bottom:.85rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">
             <i class="fas fa-gem"></i> Minerals in this Delivery
         </div>
@@ -389,6 +394,49 @@ include 'includes/header.php';
 
 </form>
 
+<!-- Quick-register supplier modal -->
+<div class="modal-backdrop" id="qs-modal" onclick="if(event.target===this)closeQuickSupplier()">
+    <div class="modal" style="max-width:480px">
+        <div class="modal-header">
+            <h3><i class="fas fa-user-plus" style="margin-right:.4rem;color:var(--primary)"></i>Register New Supplier</h3>
+            <button class="modal-close" type="button" onclick="closeQuickSupplier()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+            <div id="qs-alert" class="alert" style="display:none;margin-bottom:.75rem"></div>
+            <form id="qs-form">
+                <div class="form-grid form-grid-2">
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label>Company / Supplier Name <span style="color:#dc2626">*</span></label>
+                        <input type="text" name="name" id="qs-name" placeholder="ABC Mining Co." required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Person</label>
+                        <input type="text" name="contact_person" id="qs-contact" placeholder="Full name">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="text" name="phone" id="qs-phone" placeholder="+250 …">
+                    </div>
+                    <div class="form-group">
+                        <label>License Number</label>
+                        <input type="text" name="license_number" id="qs-license" placeholder="LIC-XXXX">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" id="qs-email" placeholder="contact@company.com">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeQuickSupplier()">Cancel</button>
+            <button type="button" id="qs-save-btn" class="btn btn-primary" onclick="submitQuickSupplier()">
+                <i class="fas fa-save"></i> Save &amp; Select
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 const loanBalances      = <?= json_encode($loan_balances) ?>;
 const deferredBalances  = <?= json_encode($deferred_balances) ?>;
@@ -402,6 +450,7 @@ let currentNetToPay = 0;
 const CARD_COLORS = { cassiterite: '#3b82f6', coltan: '#8b5cf6', wolframite: '#10b981' };
 
 function onSupplierChange(suppId) {
+    document.getElementById('minerals-section').style.display = suppId ? '' : 'none';
     updateLoanBadge(suppId);
     updateDeferredBadge(suppId);
     checkBatchLoanLimit();
@@ -498,7 +547,7 @@ function buildCard(id, name, cat) {
         fields = `
             <div class="form-group"><label>TANTAL (USD)</label><input type="text" id="c${id}-tantal" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Quantity (kg)</label><input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Sample</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Sample (%)</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RWF Rate</label><input type="text" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Tag (FRW)</label><input type="text" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RMA (FRW)</label><input type="text" id="c${id}-rma" value="190" oninput="calcCard(${id})"></div>`;
@@ -506,7 +555,7 @@ function buildCard(id, name, cat) {
         fields = `
             <div class="form-group"><label>TMT Price (USD)</label><input type="text" id="c${id}-tmt" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Quantity (kg)</label><input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Sample</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Sample (%)</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RWF Rate</label><input type="text" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Tag (FRW)</label><input type="text" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RMA (FRW)</label><input type="text" id="c${id}-rma" value="90" oninput="calcCard(${id})"></div>`;
@@ -1058,6 +1107,102 @@ function showBtnAlert(msg) {
     el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+/* ── Quick supplier registration ────────────────────────────── */
+function openQuickSupplier() {
+    document.getElementById('qs-form').reset();
+    document.getElementById('qs-alert').style.display = 'none';
+    document.getElementById('qs-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => document.getElementById('qs-name').focus(), 80);
+}
+
+function closeQuickSupplier() {
+    document.getElementById('qs-modal').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function submitQuickSupplier() {
+    const nameEl = document.getElementById('qs-name');
+    if (!nameEl.value.trim()) { nameEl.focus(); return; }
+
+    const btn = document.getElementById('qs-save-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+    const fd = new FormData(document.getElementById('qs-form'));
+    fd.append('add', '1');
+
+    fetch('suppliers.php', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            const s   = d.supplier;
+            const sel = document.querySelector('[name="supplier_id"]');
+            const opt = document.createElement('option');
+            opt.value       = s.id;
+            opt.textContent = s.name + (s.phone ? ' — ' + s.phone : '');
+            sel.appendChild(opt);
+            sel.value = s.id;
+            onSupplierChange(String(s.id));
+            closeQuickSupplier();
+            showAlert('success', 'Supplier <strong>' + esc(s.name) + '</strong> registered and selected.');
+        } else {
+            const al = document.getElementById('qs-alert');
+            al.className = 'alert alert-error';
+            al.innerHTML = '<i class="fas fa-circle-xmark"></i> ' + d.message;
+            al.style.display = 'flex';
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save &amp; Select';
+    })
+    .catch(() => {
+        const al = document.getElementById('qs-alert');
+        al.className = 'alert alert-error';
+        al.innerHTML = '<i class="fas fa-circle-xmark"></i> Network error. Please try again.';
+        al.style.display = 'flex';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save &amp; Select';
+    });
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('qs-modal').classList.contains('open'))
+        closeQuickSupplier();
+});
+
+document.getElementById('qs-form').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitQuickSupplier(); }
+});
+
+function resetPurchaseForm() {
+    document.getElementById('batch-form').reset();
+
+    /* clear mineral cards */
+    document.getElementById('mineral-cards').innerHTML = '';
+    document.querySelectorAll('#mineral-checks input[type="checkbox"]').forEach(cb => cb.checked = false);
+    for (const k in cardCats)    delete cardCats[k];
+    for (const k in cardNames)   delete cardNames[k];
+    for (const k in cardSummary) delete cardSummary[k];
+
+    /* clear payment rows */
+    document.getElementById('payment-rows').innerHTML = '';
+    payRowCnt = 0;
+
+    /* hide dynamic sections */
+    ['minerals-section','global-summary','payment-tracking','loan-section',
+     'deferred-balance-info','btn-alert','advance-offset-warn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    currentNetToPay = 0;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 document.getElementById('batch-form').addEventListener('submit', function (e) {
     e.preventDefault();
     document.getElementById('btn-alert').style.display = 'none';
@@ -1102,12 +1247,14 @@ document.getElementById('batch-form').addEventListener('submit', function (e) {
     .then(r => r.json())
     .then(d => {
         if (d.success) {
-            window.location.href = 'batches.php?created=' + d.count;
+            const plural = d.count > 1 ? d.count + ' batches' : 'batch';
+            showAlert('success', '<strong>' + plural + '</strong> saved successfully. You can record another purchase below.');
+            resetPurchaseForm();
         } else {
             showAlert('error', d.message);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-save"></i> Save Purchase';
         }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save Purchase';
     })
     .catch(() => {
         showAlert('error', 'Network error. Please try again.');
