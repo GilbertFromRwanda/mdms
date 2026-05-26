@@ -2,7 +2,7 @@
 require_once 'config/database.php';
 if(!isLoggedIn()){ header('Location: login.php'); exit; }
 
-/* ── AJAX: save sale ─────────────────────────────────────────── */
+/* ── AJAX: save salea ─────────────────────────────────────────── */
 if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'])){
     header('Content-Type: application/json');
     try {
