@@ -101,7 +101,7 @@ include 'includes/header.php';
     <?php endif; ?>
 </form>
 
-<div class="table-wrap">
+<div class="table-wrap text-complete">
     <table>
         <thead>
             <tr>
