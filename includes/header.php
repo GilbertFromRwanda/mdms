@@ -63,6 +63,7 @@
         <div class="nav-section-label" style="margin-top:.5rem">Admin</div>
         <a href="users.php"    class="nav-item <?= $cur==='users'    ?'active':'' ?>"><i class="fas fa-users"></i> Users</a>
         <a href="settings.php" class="nav-item <?= $cur==='settings' ?'active':'' ?>"><i class="fas fa-sliders"></i> Settings</a>
+        <a href="run_update.php" class="nav-item <?= $cur==='settings' ?'active':'' ?>">⚙ Run updates</a>
         <a href="backup.php"   class="nav-item <?= $cur==='backup'   ?'active':'' ?>"><i class="fas fa-database"></i> Backup</a>
         <?php endif; ?>
     </div>

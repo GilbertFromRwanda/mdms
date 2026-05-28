@@ -553,7 +553,7 @@ function buildCard(id, name, cat) {
             <div class="form-group"><label>RMA (FRW)</label><input type="text" id="c${id}-rma" value="190" oninput="calcCard(${id})"></div>`;
     } else {
         fields = `
-            <div class="form-group"><label>TMT Price (USD)</label><input type="text" id="c${id}-tmt" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>TMU Price (USD)</label><input type="text" id="c${id}-tmt" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Quantity (kg)</label><input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Sample (%)</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RWF Rate</label><input type="text" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
