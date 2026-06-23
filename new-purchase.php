@@ -218,6 +218,16 @@ foreach($special_minerals as &$_sm)
         if(strpos(strtolower($_m['name']), $_keys[$_sm['cat']]) !== false){ $_sm['id'] = $_m['id']; break; }
 unset($_sm);
 
+$extra_head = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<style>
+.form-group .ts-wrapper{width:100%}
+.form-group .ts-control{padding:.6rem .8rem;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.875rem;color:var(--text);background:var(--surface);font-family:inherit;min-height:unset;box-shadow:none}
+.form-group .ts-wrapper.focus .ts-control{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.ts-dropdown{font-size:.875rem;font-family:inherit;border:1px solid var(--border);border-radius:var(--r-sm)}
+.ts-dropdown .active{background:var(--primary,#3b82f6);color:#fff}
+</style>';
+
 include 'includes/header.php';
 ?>
 
@@ -240,7 +250,7 @@ include 'includes/header.php';
         <div class="form-grid form-grid-2">
             <div class="form-group">
                 <label>Supplier</label>
-                <select name="supplier_id" required onchange="onSupplierChange(this.value)">
+                <select name="supplier_id" required>
                     <option value="">— Select supplier —</option>
                     <?php foreach($suppliers as $s): ?>
                     <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name'] . ($s['phone'] ? ' — ' . $s['phone'] : '')) ?></option>
@@ -1140,13 +1150,10 @@ function submitQuickSupplier() {
     .then(r => r.json())
     .then(d => {
         if (d.success) {
-            const s   = d.supplier;
-            const sel = document.querySelector('[name="supplier_id"]');
-            const opt = document.createElement('option');
-            opt.value       = s.id;
-            opt.textContent = s.name + (s.phone ? ' — ' + s.phone : '');
-            sel.appendChild(opt);
-            sel.value = s.id;
+            const s    = d.supplier;
+            const text = s.name + (s.phone ? ' — ' + s.phone : '');
+            suppSelect.addOption({ value: String(s.id), text });
+            suppSelect.setValue(String(s.id));
             onSupplierChange(String(s.id));
             closeQuickSupplier();
             showAlert('success', 'Supplier <strong>' + esc(s.name) + '</strong> registered and selected.');
@@ -1180,6 +1187,7 @@ document.getElementById('qs-form').addEventListener('keydown', e => {
 
 function resetPurchaseForm() {
     document.getElementById('batch-form').reset();
+    suppSelect.setValue('');
 
     /* clear mineral cards */
     document.getElementById('mineral-cards').innerHTML = '';
@@ -1202,6 +1210,11 @@ function resetPurchaseForm() {
     currentNetToPay = 0;
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+const suppSelect = new TomSelect('[name="supplier_id"]', {
+    allowEmptyOption: true,
+    onChange: onSupplierChange,
+});
 
 document.getElementById('batch-form').addEventListener('submit', function (e) {
     e.preventDefault();

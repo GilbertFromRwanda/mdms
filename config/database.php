@@ -23,6 +23,42 @@ function logAction($pdo, $user_id, $action, $table_name, $record_id, $details = 
     $stmt->execute([$user_id, $action, $table_name, $record_id, $details, $ip]);
 }
 
+function generateLicenseKey(string $period_from, string $period_to, string $plan, float $amount): string {
+    $payload = json_encode(['f'=>$period_from,'t'=>$period_to,'p'=>$plan,'a'=>round($amount,2)]);
+    $b64     = rtrim(strtr(base64_encode($payload), '+/', '-_'), '=');
+    $sig     = substr(hash_hmac('sha256', $payload, LICENSE_SECRET), 0, 16);
+    return 'MDMS.'.$b64.'.'.$sig;
+}
+
+function validateLicenseKey(string $key): array|false {
+    $parts = explode('.', trim($key));
+    if(count($parts) !== 3 || $parts[0] !== 'MDMS') return false;
+    $payload = base64_decode(strtr($parts[1], '-_', '+/'));
+    if(!$payload) return false;
+    $data = json_decode($payload, true);
+    if(!$data || !isset($data['f'],$data['t'],$data['p'])) return false;
+    $expected = substr(hash_hmac('sha256', $payload, LICENSE_SECRET), 0, 16);
+    if(!hash_equals($expected, $parts[2])) return false;
+    if($data['t'] < $data['f']) return false;
+    return $data;
+}
+
+function checkSubscription(PDO $pdo): void {
+    $skip = ['login.php', 'logout.php', 'subscription_expired.php', 'subscriptions.php'];
+    if (in_array(basename($_SERVER['PHP_SELF']), $skip)) return;
+    if (!isset($_SESSION['user_id'])) return;
+    try {
+        $sub = $pdo->query("SELECT expiry_date, grace_days FROM subscription WHERE is_active=1 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) { return; }
+    if (!$sub) return;
+    $grace_until = date('Y-m-d', strtotime($sub['expiry_date'] . ' +' . max(0, (int)$sub['grace_days']) . ' days'));
+    if (date('Y-m-d') > $grace_until) {
+        header('Location: subscription_expired.php');
+        exit;
+    }
+}
+checkSubscription($pdo);
+
 function paginate(int $page, int $total_pages, array $params, string $script): string {
     if($total_pages <= 1) return '';
     $url = function(int $p) use ($params, $script): string {

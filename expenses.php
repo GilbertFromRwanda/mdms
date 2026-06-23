@@ -20,26 +20,6 @@ $CATEGORIES = [
     'Restaurant'       => 'fa-utensils',
     'Other'            => 'fa-tag',
 ];
-
-/* Ensure table exists */
-try { $pdo->exec("CREATE TABLE IF NOT EXISTS `expenses` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `expense_date` date NOT NULL,
-  `category` varchar(100) NOT NULL DEFAULT 'Other',
-  `description` varchar(255) NOT NULL,
-  `amount` decimal(15,2) NOT NULL,
-  `payment_method` enum('cash','bank','momo','mixed') NOT NULL DEFAULT 'cash',
-  `account_id` int(11) DEFAULT NULL,
-  `notes` text DEFAULT NULL,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `expense_date` (`expense_date`),
-  KEY `created_by` (`created_by`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"); } catch(Exception $e){}
-/* Upgrade existing tables that predate the 'mixed' value */
-try { $pdo->exec("ALTER TABLE expenses MODIFY payment_method ENUM('cash','bank','momo','mixed') NOT NULL DEFAULT 'cash'"); } catch(Exception $e){}
-
 /* ── AJAX: save expense ──────────────────────────────────────── */
 if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && isset($_POST['save_expense'])){
     header('Content-Type: application/json');

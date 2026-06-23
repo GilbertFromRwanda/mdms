@@ -1,9 +1,10 @@
 <?php
 require_once 'config/database.php';
-if (!isLoggedIn() || $_SESSION['role'] != 'admin') {
+if (!isLoggedIn() || !in_array($_SESSION['role'], ['admin','system'])) {
     header('Location: dashboard.php');
     exit;
 }
+$is_system = ($_SESSION['role'] === 'system');
 
 /* ── AJAX handlers ───────────────────────────────────────────── */
 if (isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
@@ -12,6 +13,10 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
     /* Add user */
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add'])) {
         try {
+            if ($_POST['role'] === 'system' && !$is_system) {
+                echo json_encode(['success'=>false,'message'=>'Only the system owner can create system accounts.']);
+                exit;
+            }
             $existing = $pdo->prepare("SELECT id FROM users WHERE username = ?");
             $existing->execute([$_POST['username']]);
             if ($existing->fetch()) {
@@ -48,6 +53,15 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit'])) {
         try {
             $uid = (int)$_POST['id'];
+            $target = $pdo->prepare("SELECT role FROM users WHERE id=?"); $target->execute([$uid]); $tr=$target->fetch();
+            if ($tr && $tr['role']==='system' && !$is_system) {
+                echo json_encode(['success'=>false,'message'=>'Only the system owner can edit system accounts.']);
+                exit;
+            }
+            if ($_POST['role']==='system' && !$is_system) {
+                echo json_encode(['success'=>false,'message'=>'Only the system owner can assign the system role.']);
+                exit;
+            }
             /* Check username uniqueness (excluding self) */
             $existing = $pdo->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
             $existing->execute([$_POST['username'], $uid]);
@@ -85,6 +99,11 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete'])) {
         try {
             $uid = (int)$_POST['id'];
+            $target = $pdo->prepare("SELECT role FROM users WHERE id=?"); $target->execute([$uid]); $tr=$target->fetch();
+            if ($tr && $tr['role']==='system' && !$is_system) {
+                echo json_encode(['success'=>false,'message'=>'Only the system owner can delete system accounts.']);
+                exit;
+            }
             if ($uid === (int)$_SESSION['user_id']) {
                 echo json_encode(['success' => false, 'message' => 'You cannot delete your own account.']);
                 exit;
@@ -103,13 +122,17 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 $page_title = 'User Management';
 
 $search = trim($_GET['search'] ?? '');
-$where_sql = '';
+$where_parts = [];
 $params = [];
+if (!$is_system) {
+    $where_parts[] = "role != 'system'";
+}
 if ($search) {
-    $where_sql = 'WHERE username LIKE ? OR full_name LIKE ? OR email LIKE ?';
+    $where_parts[] = '(username LIKE ? OR full_name LIKE ? OR email LIKE ?)';
     $s = '%' . $search . '%';
     $params = [$s, $s, $s];
 }
+$where_sql = $where_parts ? 'WHERE ' . implode(' AND ', $where_parts) : '';
 $stmt = $pdo->prepare("SELECT * FROM users $where_sql ORDER BY created_at DESC");
 $stmt->execute($params);
 $users = $stmt->fetchAll();
@@ -154,6 +177,9 @@ include 'includes/header.php';
                     <div class="form-group">
                         <label>Role</label>
                         <select name="role" id="usr-role">
+                            <?php if($is_system): ?>
+                            <option value="system">System</option>
+                            <?php endif; ?>
                             <option value="admin">Admin</option>
                             <option value="manager">Manager</option>
                             <option value="storekeeper">Storekeeper</option>
@@ -224,7 +250,7 @@ include 'includes/header.php';
             <td><?= htmlspecialchars($u['full_name']) ?></td>
             <td class="text-muted" style="font-size:.82rem"><?= htmlspecialchars($u['email'] ?? '') ?></td>
             <td><?php
-                $role_colors = ['admin' => '#dc2626', 'manager' => '#d97706', 'storekeeper' => '#16a34a'];
+                $role_colors = ['system'=>'#7c3aed','admin'=>'#dc2626','manager'=>'#d97706','storekeeper'=>'#16a34a'];
                 $rc = $role_colors[$u['role']] ?? '#6b7280';
             ?><span style="color:<?= $rc ?>;font-weight:700;font-size:.82rem"><?= ucfirst($u['role']) ?></span></td>
             <td class="text-muted" style="font-size:.82rem"><?= date('d M Y', strtotime($u['created_at'])) ?></td>
@@ -298,7 +324,7 @@ function esc(s) {
 }
 
 function roleColor(role) {
-    return { admin:'#dc2626', manager:'#d97706', storekeeper:'#16a34a' }[role] || '#6b7280';
+    return { system:'#7c3aed', admin:'#dc2626', manager:'#d97706', storekeeper:'#16a34a' }[role] || '#6b7280';
 }
 
 function showAlert(type, msg) {

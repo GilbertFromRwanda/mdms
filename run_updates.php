@@ -53,80 +53,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'run_d
 }
 
 $sql_file = __DIR__ . '/db/updates.sql';
+$page_title = 'Run Updates';
+$extra_head = '<style>
+    .ru-wrap       { max-width: 820px; margin: 0 auto; padding: 32px 24px; }
+    .ru-page-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: var(--text, #1e293b); }
+
+    .ru-card { background: #fff; border-radius: 14px; border: 1px solid var(--gray-200, #e2e8f0);
+               box-shadow: 0 1px 4px rgba(0,0,0,.05); padding: 28px 28px 24px; margin-bottom: 20px; }
+
+    .ru-card-head  { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+    .ru-icon       { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center;
+                     justify-content: center; font-size: 18px; flex-shrink: 0; }
+    .ru-icon.green { background: #dcfce7; }
+    .ru-icon.blue  { background: #dbeafe; }
+    .ru-card-title { font-size: 16px; font-weight: 700; color: var(--text, #1e293b); }
+    .ru-card-sub   { font-size: 13px; color: #64748b; margin-bottom: 20px; margin-left: 52px; }
+
+    .ru-meta { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+               padding: 10px 14px; font-family: monospace; font-size: 12px; color: #64748b;
+               margin-bottom: 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .ru-btn { padding: 9px 22px; border: none; border-radius: 8px; font-size: 14px;
+              font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+              transition: opacity .15s; }
+    .ru-btn:disabled { opacity: .55; cursor: not-allowed; }
+    .ru-btn.green { background: #16a34a; color: #fff; }
+    .ru-btn.green:hover:not(:disabled) { background: #15803d; }
+    .ru-btn.blue  { background: #2563eb; color: #fff; }
+    .ru-btn.blue:hover:not(:disabled)  { background: #1d4ed8; }
+
+    .ru-output { background: #0f172a; color: #94a3b8; font-family: monospace; font-size: 12.5px;
+                 padding: 14px 16px; border-radius: 8px; white-space: pre-wrap; word-break: break-all;
+                 margin-top: 16px; line-height: 1.6; display: none; }
+    .ru-output.visible { display: block; }
+    .ru-output .ok-line  { color: #86efac; }
+    .ru-output .err-line { color: #fca5a5; }
+
+    .ru-status { margin-top: 12px; font-size: 13px; font-weight: 600; display: none; }
+    .ru-status.ok   { color: #16a34a; }
+    .ru-status.fail { color: #dc2626; }
+
+    .ru-results  { margin-top: 18px; display: none; }
+    .ru-summary  { padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+    .ru-summary.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .ru-summary.fail { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+    .ru-item { border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden; margin-bottom: 8px; }
+    .ru-item-head { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; }
+    .ru-item-head.ok   { background: #f0fdf4; }
+    .ru-item-head.fail { background: #fff1f2; }
+    .ru-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; flex-shrink: 0; margin-top: 2px; }
+    .ru-badge.ok   { background: #dcfce7; color: #166534; }
+    .ru-badge.fail { background: #fee2e2; color: #991b1b; }
+    .ru-sql  { font-family: monospace; font-size: 12px; color: #334155; flex: 1; word-break: break-all; }
+    .ru-err  { font-family: monospace; font-size: 12px; color: #dc2626; padding: 8px 12px 9px 38px;
+               background: #fff5f5; border-top: 1px solid #fecaca; }
+
+    .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4);
+               border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+</style>';
+include 'includes/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Run Updates</title>
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        .ru-wrap       { max-width: 820px; margin: 0 auto; padding: 32px 24px; }
-        .ru-page-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: var(--text, #1e293b); }
-
-        .ru-card { background: #fff; border-radius: 14px; border: 1px solid var(--gray-200, #e2e8f0);
-                   box-shadow: 0 1px 4px rgba(0,0,0,.05); padding: 28px 28px 24px; margin-bottom: 20px; }
-
-        .ru-card-head  { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
-        .ru-icon       { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center;
-                         justify-content: center; font-size: 18px; flex-shrink: 0; }
-        .ru-icon.green { background: #dcfce7; }
-        .ru-icon.blue  { background: #dbeafe; }
-        .ru-card-title { font-size: 16px; font-weight: 700; color: var(--text, #1e293b); }
-        .ru-card-sub   { font-size: 13px; color: #64748b; margin-bottom: 20px; margin-left: 52px; }
-
-        .ru-meta { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-                   padding: 10px 14px; font-family: monospace; font-size: 12px; color: #64748b;
-                   margin-bottom: 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-        .ru-btn { padding: 9px 22px; border: none; border-radius: 8px; font-size: 14px;
-                  font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
-                  transition: opacity .15s; }
-        .ru-btn:disabled { opacity: .55; cursor: not-allowed; }
-        .ru-btn.green { background: #16a34a; color: #fff; }
-        .ru-btn.green:hover:not(:disabled) { background: #15803d; }
-        .ru-btn.blue  { background: #2563eb; color: #fff; }
-        .ru-btn.blue:hover:not(:disabled)  { background: #1d4ed8; }
-
-        .ru-output { background: #0f172a; color: #94a3b8; font-family: monospace; font-size: 12.5px;
-                     padding: 14px 16px; border-radius: 8px; white-space: pre-wrap; word-break: break-all;
-                     margin-top: 16px; line-height: 1.6; display: none; }
-        .ru-output.visible { display: block; }
-        .ru-output .ok-line  { color: #86efac; }
-        .ru-output .err-line { color: #fca5a5; }
-
-        .ru-status { margin-top: 12px; font-size: 13px; font-weight: 600; display: none; }
-        .ru-status.ok   { color: #16a34a; }
-        .ru-status.fail { color: #dc2626; }
-
-        /* DB result list */
-        .ru-results  { margin-top: 18px; display: none; }
-        .ru-summary  { padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-bottom: 14px; }
-        .ru-summary.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-        .ru-summary.fail { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-
-        .ru-item { border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden; margin-bottom: 8px; }
-        .ru-item-head { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; }
-        .ru-item-head.ok   { background: #f0fdf4; }
-        .ru-item-head.fail { background: #fff1f2; }
-        .ru-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; flex-shrink: 0; margin-top: 2px; }
-        .ru-badge.ok   { background: #dcfce7; color: #166534; }
-        .ru-badge.fail { background: #fee2e2; color: #991b1b; }
-        .ru-sql  { font-family: monospace; font-size: 12px; color: #334155; flex: 1; word-break: break-all; }
-        .ru-err  { font-family: monospace; font-size: 12px; color: #dc2626; padding: 8px 12px 9px 38px;
-                   background: #fff5f5; border-top: 1px solid #fecaca; }
-
-        .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4);
-                   border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-<div class="dashboard-container">
-    <?php include 'sidebar.php'; ?>
-    <div class="main-content">
-    <div class="ru-wrap">
+<div class="ru-wrap">
         <div class="ru-page-title">System Updates</div>
 
         <!-- Git Pull -->
@@ -168,8 +157,6 @@ $sql_file = __DIR__ . '/db/updates.sql';
         </div>
 
         <a href="dashboard.php" style="font-size:13px;color:#64748b;text-decoration:none;">&#8592; Back to Dashboard</a>
-    </div>
-    </div>
 </div>
 
 <script>
@@ -188,7 +175,7 @@ function runGitPull() {
     var data = new FormData();
     data.append('action', 'git_pull');
 
-    fetch('run_update.php', { method: 'POST', body: data })
+    fetch('run_updates.php', { method: 'POST', body: data })
         .then(function(r) { return r.json(); })
         .then(function(res) {
             out.textContent = res.output || '(no output)';
@@ -222,7 +209,7 @@ function runDb() {
     var data = new FormData();
     data.append('action', 'run_db');
 
-    fetch('run_update.php', { method: 'POST', body: data })
+    fetch('run_updates.php', { method: 'POST', body: data })
         .then(function(r) { return r.json(); })
         .then(function(res) {
             var rows = res.results || [];
@@ -263,5 +250,4 @@ function runDb() {
         });
 }
 </script>
-</body>
-</html>
+<?php include 'includes/footer.php'; ?>

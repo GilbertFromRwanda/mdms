@@ -40,6 +40,7 @@ $users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC")->fetchAll()
                 <div class="form-group">
                     <label>Role</label>
                     <select name="role">
+                        <option value="system">System</option>
                         <option value="admin">Admin</option>
                         <option value="manager">Manager</option>
                         <option value="storekeeper">Storekeeper</option>
