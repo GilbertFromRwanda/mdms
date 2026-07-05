@@ -3,7 +3,7 @@ require_once 'config/database.php';
 if (!isLoggedIn()) { header('Location: login.php'); exit; }
 
 $page_title  = 'Dashboard';
-$extra_head  = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>';
+$extra_head  = '<script src="js/vendor/chart.umd.min.js"></script>';
 
 /* ── KPI stats ───────────────────────────────────────────────────── */
 // Precompute month boundaries in PHP so MySQL sees literal constants and can

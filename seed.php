@@ -43,7 +43,7 @@ foreach($seeds as $s){
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Seed Users — MDMS</title>
 <link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="css/vendor/fontawesome/all.min.css">
 </head>
 <body style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg,#f1f5f9)">
 <div style="max-width:500px;width:100%;margin:2rem;font-family:system-ui,sans-serif">

@@ -218,8 +218,8 @@ foreach($special_minerals as &$_sm)
         if(strpos(strtolower($_m['name']), $_keys[$_sm['cat']]) !== false){ $_sm['id'] = $_m['id']; break; }
 unset($_sm);
 
-$extra_head = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css">
-<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+$extra_head = '<link rel="stylesheet" href="css/vendor/tomselect/tom-select.css">
+<script src="js/vendor/tom-select.complete.min.js"></script>
 <style>
 .form-group .ts-wrapper{width:100%}
 .form-group .ts-control{padding:.6rem .8rem;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.875rem;color:var(--text);background:var(--surface);font-family:inherit;min-height:unset;box-shadow:none}

@@ -1,7 +1,7 @@
 <?php
 require_once 'config/database.php';
 if(!isLoggedIn()){ header('Location: login.php'); exit; }
-if(($_SESSION['role']??'') !== 'system'){ header('Location: dashboard.php'); exit; }
+if(($_SESSION['role']??'') !== 'superadmin'){ header('Location: dashboard.php'); exit; }
 
 /* ─────────────────────── AJAX handlers ─────────────────────── */
 if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'])){
@@ -146,7 +146,7 @@ include 'includes/header.php';
 <div class="page-header">
     <h2><i class="fas fa-key" style="margin-right:.4rem;color:var(--text-muted)"></i>Subscription</h2>
     <div style="display:flex;gap:.5rem">
-        <?php if(($_SESSION['role']??'') === 'system'): ?>
+        <?php if(($_SESSION['role']??'') === 'superadmin'): ?>
         <button class="btn btn-secondary" onclick="openGenModal()"><i class="fas fa-key"></i> Generate Key</button>
         <?php endif; ?>
         <button class="btn btn-primary" onclick="openPayModal()"><i class="fas fa-plus"></i> Record Payment</button>

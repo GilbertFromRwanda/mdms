@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title><?= htmlspecialchars($page_title??'Minerals Depot') ?> — MDMS</title>
 <link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="css/vendor/fontawesome/all.min.css">
 <?php if(isset($extra_head)) echo $extra_head; ?>
 </head>
 <body>
