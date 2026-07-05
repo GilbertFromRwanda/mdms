@@ -44,7 +44,7 @@ function validateLicenseKey(string $key): array|false {
 }
 
 function checkSubscription(PDO $pdo): void {
-    $skip = ['login.php', 'logout.php', 'subscription_expired.php', 'subscriptions.php'];
+    $skip = ['login.php', 'logout.php', 'subscription_expired.php', 'subscriptions.php', 'activate.php'];
     if (in_array(basename($_SERVER['PHP_SELF']), $skip)) return;
     if (!isset($_SESSION['user_id'])) return;
     try {
@@ -53,7 +53,11 @@ function checkSubscription(PDO $pdo): void {
     if (!$sub) return;
     $grace_until = date('Y-m-d', strtotime($sub['expiry_date'] . ' +' . max(0, (int)$sub['grace_days']) . ' days'));
     if (date('Y-m-d') > $grace_until) {
-        header('Location: subscription_expired.php');
+        if (($_SESSION['role'] ?? '') === 'superadmin') {
+            header('Location: subscriptions.php');
+        } else {
+            header('Location: subscription_expired.php');
+        }
         exit;
     }
 }

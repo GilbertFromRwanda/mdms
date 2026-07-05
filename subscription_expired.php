@@ -4,7 +4,7 @@ require_once 'config/database.php';
 $sub = null;
 try { $sub = $pdo->query("SELECT * FROM subscription WHERE is_active=1 LIMIT 1")->fetch(PDO::FETCH_ASSOC); } catch (PDOException $e) {}
 
-$is_admin  = isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'system';
+$is_admin  = isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'superadmin';
 $is_logged = isset($_SESSION['user_id']);
 ?>
 <!DOCTYPE html>
@@ -54,6 +54,11 @@ $is_logged = isset($_SESSION['user_id']);
     </p>
 
     <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
+        <?php if($is_logged): ?>
+        <a href="activate.php" style="display:inline-flex;align-items:center;gap:.5rem;padding:.6rem 1.2rem;background:#16a34a;color:#fff;border-radius:8px;text-decoration:none;font-size:.88rem;font-weight:600">
+            <i class="fas fa-key"></i> Activate License
+        </a>
+        <?php endif; ?>
         <?php if($is_admin): ?>
         <a href="subscriptions.php" style="display:inline-flex;align-items:center;gap:.5rem;padding:.6rem 1.2rem;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:.88rem;font-weight:600">
             <i class="fas fa-rotate"></i> Manage Subscription
