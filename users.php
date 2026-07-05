@@ -125,7 +125,7 @@ $search = trim($_GET['search'] ?? '');
 $where_parts = [];
 $params = [];
 if (!$is_system) {
-    $where_parts[] = "role != 'system'";
+    $where_parts[] = "role != 'superadmin'";
 }
 if ($search) {
     $where_parts[] = '(username LIKE ? OR full_name LIKE ? OR email LIKE ?)';
