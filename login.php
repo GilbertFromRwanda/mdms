@@ -83,11 +83,6 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
                     Sign In
                 </button>
             </form>
-
-            <div class="login-demo">
-                <i class="fas fa-circle-info" style="margin-right:.35rem"></i>
-                Demo credentials: <strong>admin</strong> / <strong>admin123</strong>
-            </div>
         </div>
     </div>
 

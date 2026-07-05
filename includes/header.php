@@ -68,13 +68,13 @@
             </div>
         </div>
 
-        <?php if(isset($_SESSION['role']) && in_array($_SESSION['role'],['admin','system'])): ?>
+        <?php if(isset($_SESSION['role']) && in_array($_SESSION['role'],['admin','superadmin'])): ?>
         <div class="nav-drop <?= in_array($cur,['users','settings','run_update','backup','subscriptions'])?'active':'' ?>">
             <button class="nav-link nav-drop-toggle"><i class="fas fa-shield-halved"></i> Admin <i class="fas fa-chevron-down nav-caret"></i></button>
             <div class="nav-drop-menu">
                 <a href="users.php"         class="<?= $cur==='users'          ?'active':'' ?>"><i class="fas fa-users"></i> Users</a>
                 <a href="settings.php"      class="<?= $cur==='settings'       ?'active':'' ?>"><i class="fas fa-sliders"></i> Settings</a>
-                <?php if(isset($_SESSION['role']) && $_SESSION['role'] === 'system'): ?>
+                <?php if(isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
                     <a href="subscriptions.php" class="<?= $cur==='subscriptions'  ?'active':'' ?>"><i class="fas fa-key"></i> Subscription</a>
                 <?php endif; ?>
                 <a href="run_updates.php"><i class="fas fa-gear"></i> Run Updates</a>
