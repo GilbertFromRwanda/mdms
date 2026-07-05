@@ -20,9 +20,7 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
         $newId = $pdo->lastInsertId();
         logAction($pdo,$_SESSION['user_id'],'CREATE','manual_journal',$newId,"Manual $type: $comment — $amount FRW");
 
-        $rs = $pdo->prepare("SELECT mj.*,u.username AS created_by_name FROM manual_journal mj LEFT JOIN users u ON u.id=mj.created_by WHERE mj.id=?");
-        $rs->execute([$newId]); $row=$rs->fetch(PDO::FETCH_ASSOC);
-        echo json_encode(['success'=>true,'message'=>'Journal entry recorded.','row'=>$row]);
+        echo json_encode(['success'=>true,'message'=>'Journal entry recorded.']);
     } catch(Exception $e){ echo json_encode(['success'=>false,'message'=>$e->getMessage()]); }
     exit;
 }
@@ -43,85 +41,11 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Page data
+   Fragment renderers — shared by the full-page render below and
+   the AJAX JSON endpoint, so both stay in sync from one source.
 ══════════════════════════════════════════════════════════════ */
-$page_title = 'Manual Journal';
-
-$f = [
-    'date_from'  => $_GET['date_from']  ?? date('Y-m-d'),
-    'date_to'    => $_GET['date_to']    ?? date('Y-m-d'),
-    'entry_type' => $_GET['entry_type'] ?? '',
-];
-
-$wh=[]; $wp=[];
-if($f['date_from'])  { $wh[]="entry_date>=?"; $wp[]=$f['date_from']; }
-if($f['date_to'])    { $wh[]="entry_date<=?"; $wp[]=$f['date_to'];   }
-if($f['entry_type']) { $wh[]="entry_type=?";  $wp[]=$f['entry_type']; }
-$wsql = $wh ? 'WHERE '.implode(' AND ',$wh) : '';
-
-/* Stats (period totals, respect filters) */
-$stat_s = $pdo->prepare("
-    SELECT
-        COALESCE(SUM(CASE WHEN entry_type='credit' THEN amount END),0) AS total_credit,
-        COALESCE(SUM(CASE WHEN entry_type='debit'  THEN amount END),0) AS total_debit,
-        COUNT(*) AS cnt
-    FROM manual_journal $wsql
-");
-$stat_s->execute($wp); $stats = $stat_s->fetch(PDO::FETCH_ASSOC);
-$net = $stats['total_credit'] - $stats['total_debit'];
-
-/* Paginated list — chronological (ledger order) */
-$per_page = 50;
-$page     = max(1, intval($_GET['page'] ?? 1));
-$cnt_s    = $pdo->prepare("SELECT COUNT(*) FROM manual_journal $wsql"); $cnt_s->execute($wp);
-$total_rows  = (int)$cnt_s->fetchColumn();
-$total_pages = max(1,(int)ceil($total_rows/$per_page));
-$page        = min($page,$total_pages);
-$offset      = ($page-1)*$per_page;
-
-$data_s = $pdo->prepare("SELECT mj.*,u.username AS created_by_name FROM manual_journal mj LEFT JOIN users u ON u.id=mj.created_by $wsql ORDER BY mj.entry_date ASC, mj.created_at ASC, mj.id ASC LIMIT $per_page OFFSET $offset");
-$data_s->execute($wp); $entries=$data_s->fetchAll(PDO::FETCH_ASSOC);
-
-/* ── Running balance (full ledger history, independent of the Type filter) ── */
-$hist = $pdo->query("SELECT id, entry_date, amount, entry_type FROM manual_journal ORDER BY entry_date ASC, created_at ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
-$bal = 0.0; $balance_after = []; $opening_balance = 0.0;
-foreach($hist as $h){
-    $bal += $h['entry_type']==='credit' ? (float)$h['amount'] : -(float)$h['amount'];
-    $balance_after[$h['id']] = $bal;
-    if($f['date_from'] && $h['entry_date'] < $f['date_from']) $opening_balance = $bal;
-}
-$overall_balance = $bal;
-/* On later pages, the running balance already carries the correct total, so we
-   only show the explicit "Balance b/f" row on page 1. */
-$show_opening_row = ($page === 1);
-
-include 'includes/header.php';
-?>
-
-<div id="page-alert" class="alert mb-15" style="display:none"></div>
-
-<div class="page-header">
-    <h2><i class="fas fa-pen-to-square" style="margin-right:.4rem;color:var(--text-muted)"></i>Manual Journal</h2>
-    <div style="display:flex;gap:.5rem">
-        <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
-        <button class="btn btn-primary" onclick="openModal()"><i class="fas fa-plus"></i> Add Entry</button>
-    </div>
-</div>
-
-<!-- Shown only when printing -->
-<div class="print-only" style="display:none;margin-bottom:1rem">
-    <h2 style="margin:0 0 .2rem">Manual Journal</h2>
-    <div style="font-size:.85rem;color:#333">
-        Period: <?= $f['date_from'] ? date('d M Y',strtotime($f['date_from'])) : 'All time' ?>
-        &ndash;
-        <?= $f['date_to'] ? date('d M Y',strtotime($f['date_to'])) : 'Today' ?>
-        <?php if($f['entry_type']): ?> &middot; Type: <?= ucfirst($f['entry_type']) ?><?php endif; ?>
-        &middot; Printed <?= date('d M Y H:i') ?>
-    </div>
-</div>
-
-<!-- Stats -->
-<div class="mj-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-bottom:1rem">
+function mj_render_stats_cards(array $stats, float $net, float $overall_balance): string {
+    ob_start(); ?>
     <div style="border:1px solid var(--border);border-left:4px solid #16a34a;border-radius:8px;padding:.75rem 1rem;background:var(--surface,var(--bg))">
         <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:.25rem;display:flex;align-items:center;gap:.4rem">
             <i class="fas fa-circle-plus" style="color:#16a34a"></i> Total Credit
@@ -148,10 +72,239 @@ include 'includes/header.php';
         <div style="font-size:1.1rem;font-weight:700;color:#7c3aed"><?= number_format($overall_balance,2) ?> <span style="font-size:.72rem;font-weight:400;color:var(--text-muted)">FRW</span></div>
         <div style="font-size:.72rem;color:var(--text-muted);margin-top:.1rem">As of today, all-time</div>
     </div>
+    <?php return ob_get_clean();
+}
+
+function mj_render_period(array $f): string {
+    ob_start(); ?>
+    Period: <?= $f['date_from'] ? date('d M Y',strtotime($f['date_from'])) : 'All time' ?>
+    &ndash;
+    <?= $f['date_to'] ? date('d M Y',strtotime($f['date_to'])) : 'Today' ?>
+    <?php if($f['entry_type']): ?> &middot; Type: <?= ucfirst($f['entry_type']) ?><?php endif; ?>
+    &middot; Printed <?= date('d M Y H:i') ?>
+    <?php return ob_get_clean();
+}
+
+function mj_render_rows(array $entries, array $balance_after, float $opening_balance, bool $show_opening_row, array $f): array {
+    ob_start();
+    if(!$entries && !$show_opening_row): ?>
+        <tr id="empty-row"><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">No manual journal entries for this period.</td></tr>
+    <?php endif;
+    if($show_opening_row): ?>
+        <tr style="background:var(--bg)">
+            <td class="text-muted" style="font-size:.8rem;white-space:nowrap"><?= $f['date_from'] ? date('d M Y',strtotime($f['date_from'])) : '—' ?></td>
+            <td style="font-size:.83rem;font-style:italic;color:var(--text-muted)">Balance brought forward</td>
+            <td></td>
+            <td></td>
+            <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $opening_balance>=0?'#2563eb':'#dc2626' ?>"><?= number_format($opening_balance,2) ?></td>
+            <td></td>
+            <td></td>
+        </tr>
+    <?php endif;
+    $page_debit=0; $page_credit=0; $last_balance=$opening_balance;
+    foreach($entries as $en): $isCredit = $en['entry_type']==='credit';
+        $rowBal = $balance_after[$en['id']] ?? $last_balance;
+        $last_balance = $rowBal;
+        if($isCredit) $page_credit += $en['amount']; else $page_debit += $en['amount'];
+    ?>
+        <tr id="mj-row-<?= $en['id'] ?>">
+            <td class="text-muted" style="font-size:.82rem;white-space:nowrap">
+                <?= date('d M Y',strtotime($en['entry_date'])) ?>
+                <div style="font-size:.7rem">Processed: <?= date('H:i',strtotime($en['created_at'])) ?></div>
+            </td>
+            <td style="font-size:.85rem;font-weight:500"><?= htmlspecialchars($en['comment']) ?></td>
+            <td style="text-align:right;font-family:monospace;font-weight:600;color:#dc2626"><?= $isCredit ? '' : number_format($en['amount'],2) ?></td>
+            <td style="text-align:right;font-family:monospace;font-weight:600;color:#16a34a"><?= $isCredit ? number_format($en['amount'],2) : '' ?></td>
+            <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $rowBal>=0?'var(--text)':'#dc2626' ?>"><?= number_format($rowBal,2) ?></td>
+            <td class="text-muted" style="font-size:.78rem"><?= htmlspecialchars($en['created_by_name'] ?? '—') ?></td>
+            <td>
+                <button class="btn btn-danger" style="padding:.3rem .6rem;font-size:.75rem" onclick="deleteEntry(<?= $en['id'] ?>,this)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    <?php endforeach;
+    $html = ob_get_clean();
+    return ['html'=>$html,'page_debit'=>$page_debit,'page_credit'=>$page_credit,'last_balance'=>$last_balance];
+}
+
+function mj_render_tfoot_row(array $entries, float $page_debit, float $page_credit, float $last_balance): string {
+    if(!$entries) return '';
+    ob_start(); ?>
+    <tr style="border-top:2px solid var(--border);background:var(--surface,var(--bg))">
+        <td colspan="2" style="font-size:.82rem;font-weight:600;padding:.6rem 1rem;color:var(--text-muted)">Page total</td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;color:#dc2626;padding:.6rem 1rem"><?= number_format($page_debit,2) ?></td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;color:#16a34a;padding:.6rem 1rem"><?= number_format($page_credit,2) ?></td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;padding:.6rem 1rem">Bal: <?= number_format($last_balance,2) ?></td>
+        <td colspan="2"></td>
+    </tr>
+    <?php return ob_get_clean();
+}
+
+function mj_render_print_rows(array $print_entries, array $balance_after, float $opening_balance, array $f): array {
+    ob_start();
+    if(!$print_entries && !$f['date_from']): ?>
+        <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">No manual journal entries for this period.</td></tr>
+    <?php endif;
+    if($f['date_from']): ?>
+        <tr style="background:var(--bg)">
+            <td class="text-muted" style="font-size:.8rem;white-space:nowrap"><?= date('d M Y',strtotime($f['date_from'])) ?></td>
+            <td style="font-size:.83rem;font-style:italic;color:var(--text-muted)">Balance brought forward</td>
+            <td></td>
+            <td></td>
+            <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $opening_balance>=0?'#2563eb':'#dc2626' ?>"><?= number_format($opening_balance,2) ?></td>
+            <td></td>
+            <td></td>
+        </tr>
+    <?php endif;
+    $last_balance = $opening_balance;
+    foreach($print_entries as $en): $isCredit = $en['entry_type']==='credit';
+        $rowBal = $balance_after[$en['id']] ?? $last_balance;
+        $last_balance = $rowBal;
+    ?>
+        <tr>
+            <td class="text-muted" style="font-size:.82rem;white-space:nowrap">
+                <?= date('d M Y',strtotime($en['entry_date'])) ?>
+                <div style="font-size:.7rem">Processed: <?= date('H:i',strtotime($en['created_at'])) ?></div>
+            </td>
+            <td style="font-size:.85rem;font-weight:500"><?= htmlspecialchars($en['comment']) ?></td>
+            <td style="text-align:right;font-family:monospace;font-weight:600;color:#dc2626"><?= $isCredit ? '' : number_format($en['amount'],2) ?></td>
+            <td style="text-align:right;font-family:monospace;font-weight:600;color:#16a34a"><?= $isCredit ? number_format($en['amount'],2) : '' ?></td>
+            <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $rowBal>=0?'var(--text)':'#dc2626' ?>"><?= number_format($rowBal,2) ?></td>
+            <td class="text-muted" style="font-size:.78rem"><?= htmlspecialchars($en['created_by_name'] ?? '—') ?></td>
+            <td></td>
+        </tr>
+    <?php endforeach;
+    $html = ob_get_clean();
+    return ['html'=>$html,'last_balance'=>$last_balance];
+}
+
+function mj_render_print_tfoot_row(array $print_entries, array $stats, float $last_balance): string {
+    if(!$print_entries) return '';
+    ob_start(); ?>
+    <tr style="border-top:2px solid var(--border);background:var(--surface,var(--bg))">
+        <td colspan="2" style="font-size:.82rem;font-weight:600;padding:.6rem 1rem;color:var(--text-muted)">Period total</td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;color:#dc2626;padding:.6rem 1rem"><?= number_format($stats['total_debit'],2) ?></td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;color:#16a34a;padding:.6rem 1rem"><?= number_format($stats['total_credit'],2) ?></td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;padding:.6rem 1rem">Bal: <?= number_format($last_balance,2) ?></td>
+        <td colspan="2"></td>
+    </tr>
+    <?php return ob_get_clean();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Page data
+══════════════════════════════════════════════════════════════ */
+$page_title = 'Manual Journal';
+
+$f = [
+    'date_from'  => $_GET['date_from']  ?? date('Y-m-d'),
+    'date_to'    => $_GET['date_to']    ?? date('Y-m-d'),
+    'entry_type' => $_GET['entry_type'] ?? '',
+    'search'     => trim($_GET['search'] ?? ''),
+];
+
+$wh=[]; $wp=[];
+if($f['date_from'])  { $wh[]="entry_date>=?"; $wp[]=$f['date_from']; }
+if($f['date_to'])    { $wh[]="entry_date<=?"; $wp[]=$f['date_to'];   }
+if($f['entry_type']) { $wh[]="entry_type=?";  $wp[]=$f['entry_type']; }
+if($f['search'])     { $wh[]="`comment` LIKE ?"; $wp[]='%'.$f['search'].'%'; }
+$wsql = $wh ? 'WHERE '.implode(' AND ',$wh) : '';
+
+/* Stats (period totals, respect filters) */
+$stat_s = $pdo->prepare("
+    SELECT
+        COALESCE(SUM(CASE WHEN entry_type='credit' THEN amount END),0) AS total_credit,
+        COALESCE(SUM(CASE WHEN entry_type='debit'  THEN amount END),0) AS total_debit,
+        COUNT(*) AS cnt
+    FROM manual_journal $wsql
+");
+$stat_s->execute($wp); $stats = $stat_s->fetch(PDO::FETCH_ASSOC);
+$net = $stats['total_credit'] - $stats['total_debit'];
+
+/* Paginated list — chronological (ledger order) */
+$per_page = 50;
+$page     = max(1, intval($_GET['page'] ?? 1));
+$cnt_s    = $pdo->prepare("SELECT COUNT(*) FROM manual_journal $wsql"); $cnt_s->execute($wp);
+$total_rows  = (int)$cnt_s->fetchColumn();
+$total_pages = max(1,(int)ceil($total_rows/$per_page));
+$page        = min($page,$total_pages);
+$offset      = ($page-1)*$per_page;
+
+$data_s = $pdo->prepare("SELECT mj.*,u.username AS created_by_name FROM manual_journal mj LEFT JOIN users u ON u.id=mj.created_by $wsql ORDER BY mj.entry_date ASC, mj.created_at ASC, mj.id ASC LIMIT $per_page OFFSET $offset");
+$data_s->execute($wp); $entries=$data_s->fetchAll(PDO::FETCH_ASSOC);
+
+/* ── Print: full filtered set, no pagination ─────────────────── */
+$print_s = $pdo->prepare("SELECT mj.*,u.username AS created_by_name FROM manual_journal mj LEFT JOIN users u ON u.id=mj.created_by $wsql ORDER BY mj.entry_date ASC, mj.created_at ASC, mj.id ASC");
+$print_s->execute($wp); $print_entries = $print_s->fetchAll(PDO::FETCH_ASSOC);
+
+/* ── Running balance (full ledger history, independent of the Type filter) ── */
+$hist = $pdo->query("SELECT id, entry_date, amount, entry_type FROM manual_journal ORDER BY entry_date ASC, created_at ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
+$bal = 0.0; $balance_after = []; $opening_balance = 0.0;
+foreach($hist as $h){
+    $bal += $h['entry_type']==='credit' ? (float)$h['amount'] : -(float)$h['amount'];
+    $balance_after[$h['id']] = $bal;
+    if($f['date_from'] && $h['entry_date'] < $f['date_from']) $opening_balance = $bal;
+}
+$overall_balance = $bal;
+/* On later pages, the running balance already carries the correct total, so we
+   only show the explicit "Balance b/f" row on page 1. */
+$show_opening_row = ($page === 1);
+
+/* ── Build all fragments once, shared by the AJAX branch and the full render ── */
+$rows              = mj_render_rows($entries,$balance_after,$opening_balance,$show_opening_row,$f);
+$tfoot_row_html     = mj_render_tfoot_row($entries,$rows['page_debit'],$rows['page_credit'],$rows['last_balance']);
+$print_rows         = mj_render_print_rows($print_entries,$balance_after,$opening_balance,$f);
+$print_tfoot_row_html = mj_render_print_tfoot_row($print_entries,$stats,$print_rows['last_balance']);
+$stats_cards_html   = mj_render_stats_cards($stats,$net,$overall_balance);
+$period_html        = mj_render_period($f);
+$pagination_html    = $total_pages>1 ? paginate($page,$total_pages,array_filter($f),'manual_journal.php') : '';
+
+/* ── AJAX: filtered/paginated data, no full-page reload ──────── */
+if($_SERVER['REQUEST_METHOD']==='GET' && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && isset($_GET['ajax'])){
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success'        => true,
+        'statsHtml'      => $stats_cards_html,
+        'rowsHtml'       => $rows['html'],
+        'tfootHtml'      => $tfoot_row_html,
+        'paginationHtml' => $pagination_html,
+        'printRowsHtml'  => $print_rows['html'],
+        'printTfootHtml' => $print_tfoot_row_html,
+        'periodHtml'     => $period_html,
+        'totalRows'      => $total_rows,
+        'page'           => $page,
+        'totalPages'     => $total_pages,
+    ]);
+    exit;
+}
+
+include 'includes/header.php';
+?>
+
+<div id="page-alert" class="alert mb-15" style="display:none"></div>
+
+<div class="page-header">
+    <h2><i class="fas fa-pen-to-square" style="margin-right:.4rem;color:var(--text-muted)"></i>Manual Journal</h2>
+    <div style="display:flex;gap:.5rem">
+        <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
+        <button class="btn btn-primary" onclick="openModal()"><i class="fas fa-plus"></i> Add Entry</button>
+    </div>
+</div>
+
+<!-- Shown only when printing -->
+<div class="print-only" style="display:none;margin-bottom:1rem">
+    <h2 style="margin:0 0 .2rem">Manual Journal</h2>
+    <div id="mj-print-period" style="font-size:.85rem;color:#333"><?= $period_html ?></div>
+</div>
+
+<!-- Stats -->
+<div class="mj-stats" id="mj-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-bottom:1rem">
+<?= $stats_cards_html ?>
 </div>
 
 <!-- Filters -->
-<form method="GET" action="manual_journal.php" class="filter-bar" style="margin-bottom:1rem">
+<form method="GET" action="manual_journal.php" class="filter-bar" id="mj-filter-form" style="margin-bottom:1rem">
     <div class="filter-group">
         <label>From</label>
         <input type="date" name="date_from" value="<?= htmlspecialchars($f['date_from']) ?>">
@@ -168,18 +321,20 @@ include 'includes/header.php';
             <option value="debit"  <?= $f['entry_type']==='debit' ?'selected':'' ?>>Debit</option>
         </select>
     </div>
+    <div class="filter-group">
+        <label>Search</label>
+        <input type="text" name="search" value="<?= htmlspecialchars($f['search']) ?>" placeholder="Search particulars…">
+    </div>
     <div class="filter-actions">
         <button type="submit" class="btn btn-primary" style="height:2rem;padding:0 .75rem;font-size:.82rem"><i class="fas fa-filter"></i> Filter</button>
-        <a href="manual_journal.php" class="btn btn-secondary" style="height:2rem;padding:0 .75rem;font-size:.82rem"><i class="fas fa-xmark"></i> Clear</a>
+        <button type="button" class="btn btn-secondary" style="height:2rem;padding:0 .75rem;font-size:.82rem" onclick="clearFilters()"><i class="fas fa-xmark"></i> Clear</button>
     </div>
-    <span class="filter-active-badge"><i class="fas fa-circle-dot" style="font-size:.6rem"></i> <?= $total_rows ?> record<?= $total_rows!=1?'s':'' ?></span>
+    <span class="filter-active-badge"><i class="fas fa-circle-dot" style="font-size:.6rem"></i> <span id="mj-badge-count"><?= $total_rows ?> record<?= $total_rows!=1?'s':'' ?></span></span>
 </form>
 
-<?php if($f['entry_type']): ?>
-<div style="font-size:.78rem;color:var(--text-muted);margin:-.5rem 0 .75rem;display:flex;align-items:center;gap:.35rem">
+<div id="mj-type-note" style="font-size:.78rem;color:var(--text-muted);margin:-.5rem 0 .75rem;display:<?= $f['entry_type']?'flex':'none' ?>;align-items:center;gap:.35rem">
     <i class="fas fa-circle-info"></i> Balance reflects the full ledger — the Type filter only limits which rows are shown.
 </div>
-<?php endif; ?>
 
 <style>
 /* White page background, scoped to this page */
@@ -198,10 +353,11 @@ body, .page-content { background:#fff; }
     .mj-stats { display:none !important; }
     body, .page-content { background:#fff; padding:0; }
     .print-only { display:block !important; }
-    .table-wrap { border:none; box-shadow:none; overflow:visible; }
-    .ledger-table { font-size:.8rem; }
-    .ledger-table th, .ledger-table td { border-color:#000; }
-    .ledger-table th:last-child, .ledger-table td:last-child { display:none; }
+    .table-wrap { display:none !important; }
+    .print-full-table { display:block !important; border:none; box-shadow:none; overflow:visible; }
+    .print-full-table .ledger-table { font-size:.8rem; }
+    .print-full-table .ledger-table th, .print-full-table .ledger-table td { border-color:#000; }
+    .print-full-table .ledger-table th:last-child, .print-full-table .ledger-table td:last-child { display:none; }
 }
 </style>
 
@@ -219,58 +375,29 @@ body, .page-content { background:#fff; }
                 <th></th>
             </tr>
         </thead>
-        <tbody id="mj-tbody">
-        <?php if(!$entries && !$show_opening_row): ?>
-        <tr id="empty-row"><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">No manual journal entries for this period.</td></tr>
-        <?php endif; ?>
-        <?php if($show_opening_row): ?>
-        <tr style="background:var(--bg)">
-            <td class="text-muted" style="font-size:.8rem;white-space:nowrap"><?= $f['date_from'] ? date('d M Y',strtotime($f['date_from'])) : '—' ?></td>
-            <td style="font-size:.83rem;font-style:italic;color:var(--text-muted)">Balance brought forward</td>
-            <td></td>
-            <td></td>
-            <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $opening_balance>=0?'#2563eb':'#dc2626' ?>"><?= number_format($opening_balance,2) ?></td>
-            <td></td>
-            <td></td>
-        </tr>
-        <?php endif; ?>
-        <?php $page_debit=0; $page_credit=0; $last_balance=$opening_balance;
-        foreach($entries as $en): $isCredit = $en['entry_type']==='credit';
-            $rowBal = $balance_after[$en['id']] ?? $last_balance;
-            $last_balance = $rowBal;
-            if($isCredit) $page_credit += $en['amount']; else $page_debit += $en['amount'];
-        ?>
-        <tr id="mj-row-<?= $en['id'] ?>">
-            <td class="text-muted" style="font-size:.82rem;white-space:nowrap">
-                <?= date('d M Y',strtotime($en['entry_date'])) ?>
-                <div style="font-size:.7rem">Processed: <?= date('H:i',strtotime($en['created_at'])) ?></div>
-            </td>
-            <td style="font-size:.85rem;font-weight:500"><?= htmlspecialchars($en['comment']) ?></td>
-            <td style="text-align:right;font-family:monospace;font-weight:600;color:#dc2626"><?= $isCredit ? '' : number_format($en['amount'],2) ?></td>
-            <td style="text-align:right;font-family:monospace;font-weight:600;color:#16a34a"><?= $isCredit ? number_format($en['amount'],2) : '' ?></td>
-            <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $rowBal>=0?'var(--text)':'#dc2626' ?>"><?= number_format($rowBal,2) ?></td>
-            <td class="text-muted" style="font-size:.78rem"><?= htmlspecialchars($en['created_by_name'] ?? '—') ?></td>
-            <td>
-                <button class="btn btn-danger" style="padding:.3rem .6rem;font-size:.75rem" onclick="deleteEntry(<?= $en['id'] ?>,this)">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-        <?php if($entries): ?>
-        <tfoot>
-            <tr style="border-top:2px solid var(--border);background:var(--surface,var(--bg))">
-                <td colspan="2" style="font-size:.82rem;font-weight:600;padding:.6rem 1rem;color:var(--text-muted)">Page total</td>
-                <td style="text-align:right;font-family:monospace;font-weight:700;color:#dc2626;padding:.6rem 1rem"><?= number_format($page_debit,2) ?></td>
-                <td style="text-align:right;font-family:monospace;font-weight:700;color:#16a34a;padding:.6rem 1rem"><?= number_format($page_credit,2) ?></td>
-                <td style="text-align:right;font-family:monospace;font-weight:700;padding:.6rem 1rem">Bal: <?= number_format($last_balance,2) ?></td>
-                <td colspan="2"></td>
-            </tr>
-        </tfoot>
-        <?php endif; ?>
+        <tbody id="mj-tbody"><?= $rows['html'] ?></tbody>
+        <tfoot id="mj-tfoot"><?= $tfoot_row_html ?></tfoot>
     </table>
-    <?php if($total_pages>1): ?><?= paginate($page,$total_pages,array_filter($f),'manual_journal.php') ?><?php endif; ?>
+    <div id="mj-pagination-wrap"><?= $pagination_html ?></div>
+</div>
+
+<!-- Print-only: full filtered set, ignoring pagination -->
+<div class="print-full-table" style="display:none">
+    <table class="ledger-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Particulars</th>
+                <th style="text-align:right">Debit (FRW)</th>
+                <th style="text-align:right">Credit (FRW)</th>
+                <th style="text-align:right">Balance (FRW)</th>
+                <th>By</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="mj-print-tbody"><?= $print_rows['html'] ?></tbody>
+        <tfoot id="mj-print-tfoot"><?= $print_tfoot_row_html ?></tfoot>
+    </table>
 </div>
 
 <!-- ── Add Entry Modal ─────────────────────────────────────────── -->
@@ -317,7 +444,7 @@ body, .page-content { background:#fff; }
 </div>
 
 <script>
-function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+let currentPage = <?= (int)$page ?>;
 
 /* ── Modal open / close ─────────────────────────────────────── */
 function openModal(){
@@ -361,14 +488,61 @@ function formatAmountInput(el){
     el.setSelectionRange(pos,pos);
 }
 
-/* ── Flash message across reload (balances must be recomputed server-side) ── */
-function flash(type,msg){ sessionStorage.setItem('mj_flash', JSON.stringify({type,msg})); }
-(function showFlash(){
-    const raw = sessionStorage.getItem('mj_flash');
-    if(!raw) return;
-    sessionStorage.removeItem('mj_flash');
-    try { const {type,msg} = JSON.parse(raw); showAlert(type,msg); } catch(e){}
-})();
+/* ── AJAX data load: filters + pagination, no page reload ─────── */
+function loadData(page){
+    currentPage = page;
+    const form = document.getElementById('mj-filter-form');
+    const fd = new FormData(form);
+    const params = new URLSearchParams();
+    for(const [k,v] of fd.entries()) if(v!=='') params.append(k,v);
+    params.set('page', page);
+    params.set('ajax','1');
+    fetch('manual_journal.php?'+params.toString(), {headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(d=>{
+        if(!d.success){ showAlert('error', d.message || 'Failed to load data.'); return; }
+        document.getElementById('mj-stats').innerHTML = d.statsHtml;
+        document.getElementById('mj-tbody').innerHTML = d.rowsHtml;
+        document.getElementById('mj-tfoot').innerHTML = d.tfootHtml;
+        document.getElementById('mj-pagination-wrap').innerHTML = d.paginationHtml;
+        document.getElementById('mj-print-tbody').innerHTML = d.printRowsHtml;
+        document.getElementById('mj-print-tfoot').innerHTML = d.printTfootHtml;
+        document.getElementById('mj-print-period').innerHTML = d.periodHtml;
+        document.getElementById('mj-badge-count').textContent = d.totalRows+' record'+(d.totalRows!=1?'s':'');
+        currentPage = d.page;
+    })
+    .catch(()=>{ showAlert('error','Network error while loading data.'); });
+}
+
+document.getElementById('mj-filter-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    loadData(1);
+});
+
+function clearFilters(){
+    const form = document.getElementById('mj-filter-form');
+    const today = new Date().toLocaleDateString('en-CA');
+    form.date_from.value = today;
+    form.date_to.value = today;
+    form.entry_type.value = '';
+    form.search.value = '';
+    updateTypeNote();
+    loadData(1);
+}
+
+function updateTypeNote(){
+    document.getElementById('mj-type-note').style.display =
+        document.querySelector('#mj-filter-form select[name="entry_type"]').value ? 'flex' : 'none';
+}
+document.querySelector('#mj-filter-form select[name="entry_type"]').addEventListener('change', updateTypeNote);
+
+document.getElementById('mj-pagination-wrap').addEventListener('click', function(e){
+    const a = e.target.closest('a');
+    if(!a) return;
+    e.preventDefault();
+    if(a.classList.contains('pg-disabled')) return;
+    const url = new URL(a.getAttribute('href'), location.href);
+    loadData(parseInt(url.searchParams.get('page') || '1', 10));
+});
 
 /* ── Form submit ────────────────────────────────────────────── */
 document.getElementById('mj-form').addEventListener('submit',function(e){
@@ -378,12 +552,14 @@ document.getElementById('mj-form').addEventListener('submit',function(e){
     fetch('manual_journal.php',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(this)})
     .then(r=>r.json()).then(d=>{
         if(d.success){
-            flash('success',d.message);
-            location.reload();
+            closeModal();
+            this.reset();
+            showAlert('success',d.message);
+            loadData(currentPage);
         } else {
             showModalAlert(d.message);
-            btn.disabled=false; btn.innerHTML='<i class="fas fa-save"></i> Save Entry';
         }
+        btn.disabled=false; btn.innerHTML='<i class="fas fa-save"></i> Save Entry';
     }).catch(()=>{showModalAlert('Network error. Please try again.');btn.disabled=false;btn.innerHTML='<i class="fas fa-save"></i> Save Entry';});
 });
 
@@ -394,7 +570,7 @@ function deleteEntry(id,btn){
     const fd=new FormData(); fd.append('delete_entry','1'); fd.append('id',id);
     fetch('manual_journal.php',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:fd})
     .then(r=>r.json()).then(d=>{
-        if(d.success){ flash('success',d.message); location.reload(); }
+        if(d.success){ showAlert('success',d.message); loadData(currentPage); }
         else { showAlert('error',d.message); btn.disabled=false; btn.innerHTML='<i class="fas fa-trash"></i>'; }
     }).catch(()=>{ showAlert('error','Network error.'); btn.disabled=false; btn.innerHTML='<i class="fas fa-trash"></i>'; });
 }
