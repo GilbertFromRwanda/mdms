@@ -33,6 +33,6 @@ ALTER TABLE `users` MODIFY COLUMN `role`
   ENUM('admin','manager','storekeeper','superadmin') NOT NULL DEFAULT 'manager';
 
 INSERT IGNORE INTO `users` ( `username`, `password`, `full_name`, `role`)
-VALUES ('superadmin', '$2y$10$.jJafyBL/kRUv1eQAomQQ.w5sLK2y.GZ4gsPDHfH2GqzAFPC.KsSW', 'Super Admin', 'superadmin', 'active');
+VALUES ('superadmin', '$2y$10$.jJafyBL/kRUv1eQAomQQ.w5sLK2y.GZ4gsPDHfH2GqzAFPC.KsSW', 'Super Admin', 'superadmin');
 
 
