@@ -36,3 +36,21 @@ INSERT IGNORE INTO `users` ( `username`, `password`, `full_name`, `role`)
 VALUES ('superadmin', '$2y$10$.jJafyBL/kRUv1eQAomQQ.w5sLK2y.GZ4gsPDHfH2GqzAFPC.KsSW', 'Super Admin', 'superadmin');
 
 
+INSERT IGNORE INTO `users` ( `username`, `password`, `full_name`, `role`)
+VALUES ('admin', '$2y$10$.jJafyBL/kRUv1eQAomQQ.w5sLK2y.GZ4gsPDHfH2GqzAFPC.KsSW', 'Claudine', 'Admin');
+
+
+CREATE TABLE IF NOT EXISTS manual_journal (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    entry_date DATE NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    `comment` VARCHAR(255) NOT NULL,
+    entry_type ENUM('credit','debit') NOT NULL,
+    created_by INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE manual_journal ADD INDEX idx_entry_date (entry_date);
+ALTER TABLE manual_journal ADD INDEX idx_entry_type (entry_type);
+

@@ -58,12 +58,13 @@
             </div>
         </div>
 
-        <div class="nav-drop <?= in_array($cur,['journal','reports','audit_log'])?'active':'' ?>">
+        <div class="nav-drop <?= in_array($cur,['journal','manual_journal','reports','audit_log'])?'active':'' ?>">
             <button class="nav-link nav-drop-toggle"><i class="fas fa-chart-bar"></i> Analytics <i class="fas fa-chevron-down nav-caret"></i></button>
             <div class="nav-drop-menu">
-                <a href="journal.php"   class="<?= $cur==='journal'   ?'active':'' ?>"><i class="fas fa-book-open"></i> Journal</a>
-                <a href="reports.php"   class="<?= $cur==='reports'   ?'active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a>
-                <a href="audit_log.php" class="<?= $cur==='audit_log' ?'active':'' ?>"><i class="fas fa-scroll"></i> Audit Log</a>
+                <a href="journal.php"        class="<?= $cur==='journal'        ?'active':'' ?>"><i class="fas fa-book-open"></i> Automatic Journal</a>
+                <a href="manual_journal.php" class="<?= $cur==='manual_journal' ?'active':'' ?>"><i class="fas fa-pen-to-square"></i> Manual Journal</a>
+                <a href="reports.php"        class="<?= $cur==='reports'        ?'active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a>
+                <a href="audit_log.php"      class="<?= $cur==='audit_log'      ?'active':'' ?>"><i class="fas fa-scroll"></i> Audit Log</a>
             </div>
         </div>
 
@@ -103,8 +104,9 @@
     <a href="suppliers.php"    class="qb-item qb-purple <?= $cur==='suppliers'   ?'qb-active':'' ?>"><i class="fas fa-building"></i> Suppliers</a>
     <a href="buyers.php"       class="qb-item qb-amber <?= $cur==='buyers'       ?'qb-active':'' ?>"><i class="fas fa-handshake"></i> Buyers</a>
     <div class="qb-divider"></div>
-    <a href="journal.php"      class="qb-item qb-cyan <?= $cur==='journal'       ?'qb-active':'' ?>"><i class="fas fa-book-open"></i> Journal</a>
-    <a href="reports.php"      class="qb-item qb-cyan <?= $cur==='reports'       ?'qb-active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a>
+    <a href="journal.php"        class="qb-item qb-cyan <?= $cur==='journal'        ?'qb-active':'' ?>"><i class="fas fa-book-open"></i> Automatic Journal</a>
+    <a href="manual_journal.php" class="qb-item qb-cyan <?= $cur==='manual_journal' ?'qb-active':'' ?>"><i class="fas fa-pen-to-square"></i> Manual Journal</a>
+    <a href="reports.php"        class="qb-item qb-cyan <?= $cur==='reports'        ?'qb-active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a>
     <?php if(isset($_SESSION['role']) && in_array($_SESSION['role'],['system'])): ?>
     <div class="qb-divider"></div>
     <a href="subscriptions.php" class="qb-item <?= $cur==='subscriptions' ?'qb-active':'' ?>" style="color:#7c3aed"><i class="fas fa-key"></i> Subscription</a>

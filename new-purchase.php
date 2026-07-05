@@ -240,7 +240,7 @@ include 'includes/header.php';
     </a>
 </div>
 
-<form id="batch-form" style="max-width:960px">
+<form id="batch-form" style="max-width:960px;margin:0 auto">
 
     <!-- Delivery info -->
     <div style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--surface,var(--bg))">

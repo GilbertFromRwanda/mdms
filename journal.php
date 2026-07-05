@@ -2,7 +2,7 @@
 require_once 'config/database.php';
 if(!isLoggedIn()){ header('Location: login.php'); exit; }
 
-$page_title = 'Journal';
+$page_title = 'Automatic Journal';
 
 /* ── Filters ─────────────────────────────────────────────────── */
 $f = [
@@ -250,13 +250,50 @@ function get_dr_cr(string $etype, string $party, string $sub): array {
 include 'includes/header.php';
 ?>
 
+<style>
+/* White page background, scoped to this page */
+body, .page-content { background:#fff; }
+
+/* Excel-style grid borders, scoped to this page's journal table */
+.ledger-table { border-collapse:collapse; }
+.ledger-table th, .ledger-table td { border:1px solid var(--border); }
+.ledger-table tbody tr:last-child td { border-bottom:1px solid var(--border); }
+.ledger-table tfoot td { border:1px solid var(--border); }
+
+/* Print */
+@media print {
+    .topnav, .quickbar, .topbar, .filter-bar, .page-header button,
+    .jrn-stats, .pagination-wrap, .pagination-info { display:none !important; }
+    body, .page-content { background:#fff; padding:0; }
+    .print-only { display:block !important; }
+    .table-wrap { border:none; box-shadow:none; overflow:visible; }
+    .ledger-table { font-size:.75rem; }
+    .ledger-table th, .ledger-table td { border-color:#000; }
+}
+</style>
+
 <div class="page-header">
-    <h2><i class="fas fa-book-open" style="margin-right:.4rem;color:var(--text-muted)"></i>Journal</h2>
-    <span style="font-size:.82rem;color:var(--text-muted)">All financial movements</span>
+    <h2><i class="fas fa-book-open" style="margin-right:.4rem;color:var(--text-muted)"></i>Automatic Journal</h2>
+    <div style="display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:.82rem;color:var(--text-muted)">All financial movements</span>
+        <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
+    </div>
+</div>
+
+<!-- Shown only when printing -->
+<div class="print-only" style="display:none;margin-bottom:1rem">
+    <h2 style="margin:0 0 .2rem">Automatic Journal</h2>
+    <div style="font-size:.85rem;color:#333">
+        Period: <?= $f['date_from'] ? date('d M Y',strtotime($f['date_from'])) : 'All time' ?>
+        &ndash;
+        <?= $f['date_to'] ? date('d M Y',strtotime($f['date_to'])) : 'Today' ?>
+        <?php if($f['entry_type']): ?> &middot; Type: <?= htmlspecialchars($type_cfg[$f['entry_type']][0] ?? $f['entry_type']) ?><?php endif; ?>
+        &middot; Printed <?= date('d M Y H:i') ?>
+    </div>
 </div>
 
 <!-- Stats -->
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;margin-bottom:1rem">
+<div class="jrn-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;margin-bottom:1rem">
     <?php
     $stat_cards = [
         ['fa-money-bill-wave',      'Purchase Payments', $totals['total_purchases'],     '#2563eb', 'FRW out to suppliers'],
@@ -324,7 +361,7 @@ include 'includes/header.php';
 
 <!-- Journal table -->
 <div class="table-wrap">
-    <table>
+    <table class="ledger-table">
         <thead>
             <tr>
                 <th>#</th>
@@ -356,7 +393,7 @@ include 'includes/header.php';
             <td class="text-muted" style="font-size:.78rem"><?= ++$i ?></td>
             <td class="text-muted" style="font-size:.8rem;white-space:nowrap">
                 <?= date('d M Y', strtotime($e['entry_date'])) ?>
-                <div style="font-size:.72rem"><?= date('H:i', strtotime($e['entry_date'])) ?></div>
+                <div style="font-size:.72rem">Processed: <?= date('H:i', strtotime($e['entry_date'])) ?></div>
             </td>
             <td>
                 <span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.76rem;font-weight:600;padding:.2rem .55rem;border-radius:4px;background:<?= $tbg ?>;color:<?= $tclr ?>;white-space:nowrap">
