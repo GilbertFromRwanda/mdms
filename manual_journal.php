@@ -223,7 +223,7 @@ $stat_s->execute($wp); $stats = $stat_s->fetch(PDO::FETCH_ASSOC);
 $net = $stats['total_credit'] - $stats['total_debit'];
 
 /* Paginated list — chronological (ledger order) */
-$per_page = 50;
+$per_page = 100;
 $page     = max(1, intval($_GET['page'] ?? 1));
 $cnt_s    = $pdo->prepare("SELECT COUNT(*) FROM manual_journal $wsql"); $cnt_s->execute($wp);
 $total_rows  = (int)$cnt_s->fetchColumn();
@@ -321,9 +321,10 @@ include 'includes/header.php';
             <option value="debit"  <?= $f['entry_type']==='debit' ?'selected':'' ?>>Debit</option>
         </select>
     </div>
-    <div class="filter-group">
+    <div class="filter-group" style="position:relative">
         <label>Search</label>
-        <input type="text" name="search" value="<?= htmlspecialchars($f['search']) ?>" placeholder="Search particulars…">
+        <input type="text" name="search" id="mj-search" value="<?= htmlspecialchars($f['search']) ?>" placeholder="Search particulars…" oninput="onSearchInput()">
+        <i class="fas fa-spinner fa-spin" id="mj-search-spinner" style="display:none;position:absolute;right:.6rem;bottom:.55rem;color:var(--text-muted);font-size:.8rem"></i>
     </div>
     <div class="filter-actions">
         <button type="submit" class="btn btn-primary" style="height:2rem;padding:0 .75rem;font-size:.82rem"><i class="fas fa-filter"></i> Filter</button>
@@ -345,6 +346,8 @@ body, .page-content { background:#fff; }
 .ledger-table th, .ledger-table td { border:1px solid var(--border); }
 .ledger-table tbody tr:last-child td { border-bottom:1px solid var(--border); }
 .ledger-table tfoot td { border:1px solid var(--border); }
+
+.table-wrap.mj-loading { opacity:.5; pointer-events:none; transition:opacity .15s; }
 
 /* Print */
 @media print {
@@ -424,8 +427,25 @@ body, .page-content { background:#fff; }
                         </select>
                     </div>
                     <div class="form-group" style="grid-column:1/-1">
-                        <label>Amount (FRW)</label>
-                        <input type="text" name="amount" id="mj-amount" placeholder="0.00" required style="font-family:monospace" inputmode="decimal" oninput="formatAmountInput(this)">
+                        <label>Currency</label>
+                        <div style="display:flex;gap:1.25rem;margin-top:.3rem">
+                            <label style="display:flex;align-items:center;gap:.35rem;font-weight:500;cursor:pointer;font-size:.85rem">
+                                <input type="radio" name="mj_currency" value="FRW" checked onchange="onMjCurrencyChange()"> FRW
+                            </label>
+                            <label style="display:flex;align-items:center;gap:.35rem;font-weight:500;cursor:pointer;font-size:.85rem">
+                                <input type="radio" name="mj_currency" value="USD" onchange="onMjCurrencyChange()"> USD
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" id="mj-rate-group" style="grid-column:1/-1;display:none">
+                        <label>Exchange Rate (1 USD = FRW)</label>
+                        <input type="text" id="mj-rate" value="1,460" style="font-family:monospace" inputmode="decimal" oninput="formatAmountInput(this);updateMjAmount();saveMjRate()">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label id="mj-amount-label">Amount (FRW)</label>
+                        <input type="text" id="mj-amount-native" placeholder="0.00" required style="font-family:monospace" inputmode="decimal" oninput="formatAmountInput(this);updateMjAmount()">
+                        <input type="hidden" name="amount" id="mj-amount">
+                        <div id="mj-frw-note" style="display:none;font-size:.78rem;color:var(--text-muted);margin-top:.3rem"></div>
                     </div>
                     <div class="form-group" style="grid-column:1/-1">
                         <label>Particulars</label>
@@ -451,6 +471,9 @@ function openModal(){
     document.getElementById('mj-modal').classList.add('open');
     document.body.style.overflow='hidden';
     clearModalAlert();
+    document.querySelector('input[name="mj_currency"][value="FRW"]').checked=true;
+    restoreMjRate();
+    onMjCurrencyChange();
 }
 function closeModal(){
     document.getElementById('mj-modal').classList.remove('open');
@@ -475,6 +498,40 @@ function clearModalAlert(){
     if(el) el.style.display='none';
 }
 
+/* ── Currency: FRW / USD toggle with live conversion ──────────── */
+function mjParseNum(v){ return parseFloat(String(v||'').replace(/,/g,'')) || 0; }
+
+function saveMjRate(){
+    localStorage.setItem('mj_exchange_rate', document.getElementById('mj-rate').value);
+}
+function restoreMjRate(){
+    const saved = localStorage.getItem('mj_exchange_rate');
+    if(saved) document.getElementById('mj-rate').value = saved;
+}
+
+function onMjCurrencyChange(){
+    const currency = document.querySelector('input[name="mj_currency"]:checked').value;
+    document.getElementById('mj-rate-group').style.display = currency==='USD' ? 'block' : 'none';
+    document.getElementById('mj-amount-label').textContent = currency==='USD' ? 'Amount (USD)' : 'Amount (FRW)';
+    updateMjAmount();
+}
+
+function updateMjAmount(){
+    const currency = document.querySelector('input[name="mj_currency"]:checked').value;
+    const native   = mjParseNum(document.getElementById('mj-amount-native').value);
+    const note     = document.getElementById('mj-frw-note');
+    if(currency==='USD'){
+        const rate = mjParseNum(document.getElementById('mj-rate').value);
+        const frw  = native * rate;
+        document.getElementById('mj-amount').value = frw.toFixed(2);
+        note.style.display = 'block';
+        note.textContent = '= ' + frw.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' FRW';
+    } else {
+        document.getElementById('mj-amount').value = native.toFixed(2);
+        note.style.display = 'none';
+    }
+}
+
 /* ── Live thousand-separator formatting (e.g. 1,000 / 10,000) ── */
 function formatAmountInput(el){
     const caretFromEnd = el.value.length - el.selectionEnd;
@@ -489,16 +546,23 @@ function formatAmountInput(el){
 }
 
 /* ── AJAX data load: filters + pagination, no page reload ─────── */
+let mjLoadSeq=0;
 function loadData(page){
     currentPage = page;
+    const seq = ++mjLoadSeq;
     const form = document.getElementById('mj-filter-form');
     const fd = new FormData(form);
     const params = new URLSearchParams();
     for(const [k,v] of fd.entries()) if(v!=='') params.append(k,v);
     params.set('page', page);
     params.set('ajax','1');
+
+    document.getElementById('mj-search-spinner').style.display='inline-block';
+    document.querySelector('.table-wrap').classList.add('mj-loading');
+
     fetch('manual_journal.php?'+params.toString(), {headers:{'X-Requested-With':'XMLHttpRequest'}})
     .then(r=>r.json()).then(d=>{
+        if(seq !== mjLoadSeq) return; // a newer request has since superseded this one
         if(!d.success){ showAlert('error', d.message || 'Failed to load data.'); return; }
         document.getElementById('mj-stats').innerHTML = d.statsHtml;
         document.getElementById('mj-tbody').innerHTML = d.rowsHtml;
@@ -510,13 +574,25 @@ function loadData(page){
         document.getElementById('mj-badge-count').textContent = d.totalRows+' record'+(d.totalRows!=1?'s':'');
         currentPage = d.page;
     })
-    .catch(()=>{ showAlert('error','Network error while loading data.'); });
+    .catch(()=>{ if(seq === mjLoadSeq) showAlert('error','Network error while loading data.'); })
+    .finally(()=>{
+        if(seq !== mjLoadSeq) return;
+        document.getElementById('mj-search-spinner').style.display='none';
+        document.querySelector('.table-wrap').classList.remove('mj-loading');
+    });
 }
 
 document.getElementById('mj-filter-form').addEventListener('submit', function(e){
     e.preventDefault();
     loadData(1);
 });
+
+/* ── Live search: filters the ledger by comment as you type ───── */
+let mjSearchTimer=null;
+function onSearchInput(){
+    clearTimeout(mjSearchTimer);
+    mjSearchTimer=setTimeout(()=>loadData(1),350);
+}
 
 function clearFilters(){
     const form = document.getElementById('mj-filter-form');
@@ -547,6 +623,18 @@ document.getElementById('mj-pagination-wrap').addEventListener('click', function
 /* ── Form submit ────────────────────────────────────────────── */
 document.getElementById('mj-form').addEventListener('submit',function(e){
     e.preventDefault();
+    const currency = document.querySelector('input[name="mj_currency"]:checked').value;
+    if(currency==='USD' && mjParseNum(document.getElementById('mj-rate').value)<=0){
+        showModalAlert('Please enter a valid exchange rate.');
+        return;
+    }
+    updateMjAmount();
+    if(currency==='USD'){
+        const usdAmt = mjParseNum(document.getElementById('mj-amount-native').value);
+        const commentEl = this.querySelector('[name="comment"]');
+        commentEl.value = commentEl.value.replace(/\s*\(\$[\d,.]+\s*USD\)\s*$/,'').trim()
+            + ' ($' + usdAmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' USD)';
+    }
     const btn=document.getElementById('m-save-btn');
     btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Saving…';
     fetch('manual_journal.php',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(this)})
