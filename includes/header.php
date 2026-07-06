@@ -1,4 +1,14 @@
 <?php if(!isset($_SESSION)) session_start(); ?>
+<?php
+try {
+    $sock = socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+    socket_connect($sock, '8.8.8.8', 80);
+    socket_getsockname($sock, $_nav_server_ip);
+    socket_close($sock);
+} catch (Throwable $e) {
+    $_nav_server_ip = gethostbyname(gethostname());
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -107,11 +117,12 @@
     <div class="qb-divider"></div>
     <a href="journal.php"        class="qb-item qb-cyan <?= $cur==='journal'        ?'qb-active':'' ?>"><i class="fas fa-book-open"></i> Automatic Journal</a>
     <a href="manual_journal.php" class="qb-item qb-cyan <?= $cur==='manual_journal' ?'qb-active':'' ?>"><i class="fas fa-pen-to-square"></i> Manual Journal</a>
-    <a href="reports.php"        class="qb-item qb-cyan <?= $cur==='reports'        ?'qb-active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a>
-    <?php if(isset($_SESSION['role']) && in_array($_SESSION['role'],['system'])): ?>
+    <!-- <a href="reports.php"        class="qb-item qb-cyan <?= $cur==='reports'        ?'qb-active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a> -->
+    <?php if(isset($_SESSION['role']) && in_array($_SESSION['role'],['superadmin'])): ?>
     <div class="qb-divider"></div>
     <a href="subscriptions.php" class="qb-item <?= $cur==='subscriptions' ?'qb-active':'' ?>" style="color:#7c3aed"><i class="fas fa-key"></i> Subscription</a>
     <?php endif; ?>
+    <a href="#" class="qb-item" id="ip-copy-btn" onclick="copyServerIp(event)" title="Click to copy app URL"><i class="fas fa-copy"></i> IP:<?= $_nav_server_ip ?></a>
 </div>
 
 <div class="main-wrapper">
@@ -123,6 +134,16 @@
 <script>
 function toggleTopnav() {
     document.getElementById('topnav-links').classList.toggle('open');
+}
+function copyServerIp(e) {
+    e.preventDefault();
+    var url = window.location.protocol + '//<?= $_nav_server_ip ?>' + '<?= rtrim(dirname($_SERVER['PHP_SELF']), '/\\') ?>/';
+    var btn = document.getElementById('ip-copy-btn');
+    navigator.clipboard.writeText(url).then(function() {
+        var original = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(function(){ btn.innerHTML = original; }, 2000);
+    });
 }
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.nav-drop-toggle').forEach(function(btn) {
