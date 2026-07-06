@@ -101,8 +101,9 @@
     <a href="new-sales.php"    class="qb-item qb-green <?= $cur==='new-sales'    ?'qb-active':'' ?>"><i class="fas fa-chart-line"></i> New Sale</a>
     <a href="expenses.php"     class="qb-item qb-red <?= $cur==='expenses'       ?'qb-active':'' ?>"><i class="fas fa-receipt"></i> Expenses</a>
     <div class="qb-divider"></div>
-    <a href="suppliers.php"    class="qb-item qb-purple <?= $cur==='suppliers'   ?'qb-active':'' ?>"><i class="fas fa-building"></i> Suppliers</a>
+    <a href="accounts.php"     class="qb-item qb-purple <?= $cur==='accounts'    ?'qb-active':'' ?>"><i class="fas fa-building-columns"></i> Accounts</a>
     <a href="buyers.php"       class="qb-item qb-amber <?= $cur==='buyers'       ?'qb-active':'' ?>"><i class="fas fa-handshake"></i> Buyers</a>
+    <a href="supply-stock.php" class="qb-item qb-amber <?= $cur==='supply-stock' ?'qb-active':'' ?>"><i class="fas fa-warehouse"></i> Supplier Stock</a>
     <div class="qb-divider"></div>
     <a href="journal.php"        class="qb-item qb-cyan <?= $cur==='journal'        ?'qb-active':'' ?>"><i class="fas fa-book-open"></i> Automatic Journal</a>
     <a href="manual_journal.php" class="qb-item qb-cyan <?= $cur==='manual_journal' ?'qb-active':'' ?>"><i class="fas fa-pen-to-square"></i> Manual Journal</a>

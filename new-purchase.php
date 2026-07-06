@@ -452,9 +452,10 @@ const loanBalances      = <?= json_encode($loan_balances) ?>;
 const deferredBalances  = <?= json_encode($deferred_balances) ?>;
 const companyAccounts   = <?= json_encode(array_values($company_accounts)) ?>;
 
-const cardCats    = {};
-const cardNames   = {};
-const cardSummary = {};
+const cardCats        = {};
+const cardNames       = {};
+const cardSummary     = {};
+const cardPriceEdited = {};
 let currentNetToPay = 0;
 
 const CARD_COLORS = { cassiterite: '#3b82f6', coltan: '#8b5cf6', wolframite: '#10b981' };
@@ -572,7 +573,6 @@ function buildCard(id, name, cat) {
     }
 
     return `<div id="card-${id}" style="border:1px solid ${color}44;border-left:4px solid ${color};border-radius:8px;padding:1rem;background:var(--surface,var(--bg))">
-        <input type="hidden" name="mineral[${id}][price_per_unit]" id="c${id}-price">
         <input type="hidden" name="mineral[${id}][sample]"    id="c${id}-h-sample">
         <input type="hidden" name="mineral[${id}][rwf_rate]"  id="c${id}-h-rwf_rate">
         <input type="hidden" name="mineral[${id}][fees_1]"    id="c${id}-h-fees_1">
@@ -593,6 +593,16 @@ function buildCard(id, name, cat) {
         </div>
         <div id="c${id}-body">
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem .9rem">${fields}</div>
+            <div class="form-group" style="margin-top:.6rem">
+                <label style="display:flex;justify-content:space-between;align-items:center">
+                    <span id="c${id}-price-label">Unit Price / kg</span>
+                    <button type="button" onclick="resetPrice(${id})" title="Reset to auto-calculated price"
+                        style="background:none;border:none;color:${color};cursor:pointer;font-size:.75rem;padding:0">
+                        <i class="fas fa-rotate-left"></i> Auto
+                    </button>
+                </label>
+                <input type="text" name="mineral[${id}][price_per_unit]" id="c${id}-price" placeholder="0.00" oninput="onPriceEdit(${id})">
+            </div>
             <div id="c${id}-breakdown" style="display:none;margin-top:.7rem;border-top:1px solid ${color}33;padding-top:.6rem">
                 <table style="width:100%;font-size:.82rem;border-collapse:collapse">
                     <tbody id="c${id}-rows"></tbody>
@@ -637,7 +647,7 @@ function toggleMineralCard(cb) {
         document.getElementById('mineral-cards').insertAdjacentHTML('beforeend', buildCard(id, name, cat));
         restoreCardState(id, cat);
     } else {
-        delete cardCats[id]; delete cardNames[id]; delete cardSummary[id];
+        delete cardCats[id]; delete cardNames[id]; delete cardSummary[id]; delete cardPriceEdited[id];
         const card = document.getElementById('card-' + id);
         if (card) card.remove();
         updateGlobalSummary();
@@ -762,12 +772,30 @@ function calcCard(id) {
         ];
     }
 
-    const priceEl   = document.getElementById('c'+id+'-price');
-    const breakdown = document.getElementById('c'+id+'-breakdown');
-    const tbody     = document.getElementById('c'+id+'-rows');
+    const priceEl    = document.getElementById('c'+id+'-price');
+    const priceLabel = document.getElementById('c'+id+'-price-label');
+    const breakdown  = document.getElementById('c'+id+'-breakdown');
+    const tbody      = document.getElementById('c'+id+'-rows');
+
+    if (priceLabel) priceLabel.textContent = 'Unit Price / kg (' + currency + ')';
 
     const storedPrice = (currency === 'USD' && rwfRateCard > 0) ? unitPrice / rwfRateCard : unitPrice;
-    if (priceEl) priceEl.value = storedPrice > 0 ? storedPrice.toFixed(6) : '';
+    if (priceEl && !cardPriceEdited[id]) priceEl.value = storedPrice > 0 ? storedPrice.toFixed(2) : '';
+
+    const manualPrice    = parseFloat(priceEl?.value) || 0;
+    const effectivePrice = cardPriceEdited[id]
+        ? ((currency === 'USD' && rwfRateCard > 0) ? manualPrice * rwfRateCard : manualPrice)
+        : unitPrice;
+    const effectiveTakeHome = effectivePrice * qty;
+
+    if (cardPriceEdited[id] && rows.length) {
+        rows = rows.map(r => {
+            if (!r) return r;
+            if (r[0].startsWith('= Unit Price')) return [r[0] + ' (edited)', fmtPay(effectivePrice), true];
+            if (r[0].startsWith('= Take Home'))  return [r[0], fmtPay(effectiveTakeHome), true];
+            return r;
+        });
+    }
 
     if (rows.length && breakdown && tbody) {
         tbody.innerHTML = rows.map(r => {
@@ -783,12 +811,22 @@ function calcCard(id) {
     }
 
     // Write all calculator values to hidden fields for server-side storage
-    const _hmap = { sample:_s, rwf_rate:_rwfr, fees_1:_f1, fees_2:_f2, tag:_tag, rma:_rma, rra:_rra, lma:_lma, tmt:_tmt, tantal:_tantal, take_home:_th };
+    const _hmap = { sample:_s, rwf_rate:_rwfr, fees_1:_f1, fees_2:_f2, tag:_tag, rma:_rma, rra:_rra, lma:_lma, tmt:_tmt, tantal:_tantal, take_home: cardPriceEdited[id] ? effectiveTakeHome : _th };
     Object.entries(_hmap).forEach(([f,v]) => { const el = document.getElementById('c'+id+'-h-'+f); if(el) el.value = v || ''; });
 
-    cardSummary[id] = { takeHome_rwf: unitPrice * qty, rwfRate: rwfRateCard };
+    cardSummary[id] = { takeHome_rwf: effectiveTakeHome, rwfRate: rwfRateCard };
     updateGlobalSummary();
     saveCardState(id);
+}
+
+function onPriceEdit(id) {
+    cardPriceEdited[id] = true;
+    calcCard(id);
+}
+
+function resetPrice(id) {
+    delete cardPriceEdited[id];
+    calcCard(id);
 }
 
 /* ── Payment summary ────────────────────────────────────────── */
@@ -1192,9 +1230,10 @@ function resetPurchaseForm() {
     /* clear mineral cards */
     document.getElementById('mineral-cards').innerHTML = '';
     document.querySelectorAll('#mineral-checks input[type="checkbox"]').forEach(cb => cb.checked = false);
-    for (const k in cardCats)    delete cardCats[k];
-    for (const k in cardNames)   delete cardNames[k];
-    for (const k in cardSummary) delete cardSummary[k];
+    for (const k in cardCats)        delete cardCats[k];
+    for (const k in cardNames)       delete cardNames[k];
+    for (const k in cardSummary)     delete cardSummary[k];
+    for (const k in cardPriceEdited) delete cardPriceEdited[k];
 
     /* clear payment rows */
     document.getElementById('payment-rows').innerHTML = '';

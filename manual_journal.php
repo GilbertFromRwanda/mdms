@@ -422,6 +422,7 @@ body, .page-content { background:#fff; }
                     <div class="form-group">
                         <label>Type</label>
                         <select name="entry_type" required>
+                            <option value="" disabled selected>Select Type</option>
                             <option value="credit">Credit</option>
                             <option value="debit">Debit</option>
                         </select>
