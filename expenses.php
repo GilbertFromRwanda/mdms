@@ -425,7 +425,7 @@ function addExpPayRow(){
             <option value="">Select method first</option>
         </select>
         <div>
-            <input name="payments[${n}][amount]" type="text" placeholder="0.00" oninput="recalcExpTotal()"
+            <input name="payments[${n}][amount]" type="number" step="0.01"  placeholder="0.00" oninput="recalcExpTotal()"
                 id="epr-amt-${n}"
                 style="padding:.38rem .45rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:.82rem;font-family:monospace;width:100%;box-sizing:border-box;text-align:right">
             <div id="epr-warn-${n}" style="display:none;font-size:.74rem;color:#dc2626;margin-top:.2rem">

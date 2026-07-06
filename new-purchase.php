@@ -218,16 +218,6 @@ foreach($special_minerals as &$_sm)
         if(strpos(strtolower($_m['name']), $_keys[$_sm['cat']]) !== false){ $_sm['id'] = $_m['id']; break; }
 unset($_sm);
 
-$extra_head = '<link rel="stylesheet" href="css/vendor/tomselect/tom-select.css">
-<script src="js/vendor/tom-select.complete.min.js"></script>
-<style>
-.form-group .ts-wrapper{width:100%}
-.form-group .ts-control{padding:.6rem .8rem;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.875rem;color:var(--text);background:var(--surface);font-family:inherit;min-height:unset;box-shadow:none}
-.form-group .ts-wrapper.focus .ts-control{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
-.ts-dropdown{font-size:.875rem;font-family:inherit;border:1px solid var(--border);border-radius:var(--r-sm)}
-.ts-dropdown .active{background:var(--primary,#3b82f6);color:#fff}
-</style>';
-
 include 'includes/header.php';
 ?>
 
@@ -250,7 +240,7 @@ include 'includes/header.php';
         <div class="form-grid form-grid-2">
             <div class="form-group">
                 <label>Supplier</label>
-                <select name="supplier_id" required>
+                <select name="supplier_id" required onchange="onSupplierChange(this.value)">
                     <option value="">— Select supplier —</option>
                     <?php foreach($suppliers as $s): ?>
                     <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name'] . ($s['phone'] ? ' — ' . $s['phone'] : '')) ?></option>
@@ -416,24 +406,12 @@ include 'includes/header.php';
             <form id="qs-form">
                 <div class="form-grid form-grid-2">
                     <div class="form-group" style="grid-column:1/-1">
-                        <label>Company / Supplier Name <span style="color:#dc2626">*</span></label>
+                        <label>Supplier Name <span style="color:#dc2626">*</span></label>
                         <input type="text" name="name" id="qs-name" placeholder="ABC Mining Co." required>
                     </div>
-                    <div class="form-group">
-                        <label>Contact Person</label>
-                        <input type="text" name="contact_person" id="qs-contact" placeholder="Full name">
-                    </div>
-                    <div class="form-group">
+                    <div class="form-group" style="grid-column:1/-1">
                         <label>Phone</label>
-                        <input type="text" name="phone" id="qs-phone" placeholder="+250 …">
-                    </div>
-                    <div class="form-group">
-                        <label>License Number</label>
-                        <input type="text" name="license_number" id="qs-license" placeholder="LIC-XXXX">
-                    </div>
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" name="email" id="qs-email" placeholder="contact@company.com">
+                        <input type="number" name="phone" id="qs-phone" placeholder="07 …">
                     </div>
                 </div>
             </form>
@@ -546,30 +524,30 @@ function buildCard(id, name, cat) {
 
     if (cat === 'cassiterite') {
         fields = `
-            <div class="form-group"><label>LME Price (RWF)</label><input type="text" id="c${id}-lma" placeholder="0.00" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Quantity (kg)</label><input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Sample (%)</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RWF Rate</label><input type="text" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Company Fees 1 (FRW)</label><input type="text" id="c${id}-fees1" value="2500" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Fees 2 (FRW)</label><input type="text" id="c${id}-fees2" value="3000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Tag (FRW)</label><input type="text" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RMA (FRW)</label><input type="text" id="c${id}-rma" value="70" oninput="calcCard(${id})"></div>`;
+            <div class="form-group"><label>LME Price (RWF)</label><input type="number" id="c${id}-lma" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Quantity (kg)</label><input type="number" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Sample (%)</label><input type="number" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RWF Rate</label><input type="number" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Company Fees 1 (FRW)</label><input type="number" id="c${id}-fees1" value="2500" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Fees 2 (FRW)</label><input type="number" id="c${id}-fees2" value="3000" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Tag (FRW)</label><input type="number" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="70" oninput="calcCard(${id})"></div>`;
     } else if (cat === 'coltan') {
         fields = `
-            <div class="form-group"><label>TANTAL (USD)</label><input type="text" id="c${id}-tantal" placeholder="0.00" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Quantity (kg)</label><input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Sample (%)</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RWF Rate</label><input type="text" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Tag (FRW)</label><input type="text" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RMA (FRW)</label><input type="text" id="c${id}-rma" value="190" oninput="calcCard(${id})"></div>`;
+            <div class="form-group"><label>TANTAL (USD)</label><input type="number" id="c${id}-tantal" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Quantity (kg)</label><input type="number" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Sample (%)</label><input type="number" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RWF Rate</label><input type="number" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Tag (FRW)</label><input type="number" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="190" oninput="calcCard(${id})"></div>`;
     } else {
         fields = `
-            <div class="form-group"><label>TMU Price (USD)</label><input type="text" id="c${id}-tmt" placeholder="0.00" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Quantity (kg)</label><input type="text" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Sample (%)</label><input type="text" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RWF Rate</label><input type="text" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>Tag (FRW)</label><input type="text" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RMA (FRW)</label><input type="text" id="c${id}-rma" value="90" oninput="calcCard(${id})"></div>`;
+            <div class="form-group"><label>TMU Price (USD)</label><input type="number" id="c${id}-tmt" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Quantity (kg)</label><input type="number" name="mineral[${id}][quantity]" id="c${id}-qty" placeholder="0.000" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Sample (%)</label><input type="number" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RWF Rate</label><input type="number" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>Tag (FRW)</label><input type="number" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="90" oninput="calcCard(${id})"></div>`;
     }
 
     return `<div id="card-${id}" style="border:1px solid ${color}44;border-left:4px solid ${color};border-radius:8px;padding:1rem;background:var(--surface,var(--bg))">
@@ -601,7 +579,9 @@ function buildCard(id, name, cat) {
                         <i class="fas fa-rotate-left"></i> Auto
                     </button>
                 </label>
-                <input type="text" name="mineral[${id}][price_per_unit]" id="c${id}-price" placeholder="0.00" oninput="onPriceEdit(${id})">
+                <input type="hidden" name="mineral[${id}][price_per_unit]" id="c${id}-price-hidden">
+                <input type="text" id="c${id}-price" placeholder="0.00" inputmode="decimal"
+                    oninput="onPriceEdit(${id})" onfocus="unformatPriceField(${id})" onblur="formatPriceField(${id})">
             </div>
             <div id="c${id}-breakdown" style="display:none;margin-top:.7rem;border-top:1px solid ${color}33;padding-top:.6rem">
                 <table style="width:100%;font-size:.82rem;border-collapse:collapse">
@@ -657,6 +637,23 @@ function toggleMineralCard(cb) {
 /* ── Per-card calculation ───────────────────────────────────── */
 function fmtRWF(v) { return v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' FRW'; }
 function fmtUSD(v) { return '$' + v.toFixed(4); }
+
+function parseMoney(v) { return parseFloat(String(v ?? '').replace(/,/g, '')) || 0; }
+function formatMoneyInput(v) { return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function formatPriceField(id) {
+    const el = document.getElementById('c'+id+'-price');
+    if (!el) return;
+    const v = parseMoney(el.value);
+    el.value = v > 0 ? formatMoneyInput(v) : '';
+}
+
+function unformatPriceField(id) {
+    const el = document.getElementById('c'+id+'-price');
+    if (!el) return;
+    const v = parseMoney(el.value);
+    el.value = v > 0 ? v.toFixed(2) : '';
+}
 
 function calcCard(id) {
     const cat      = cardCats[id];
@@ -772,19 +769,24 @@ function calcCard(id) {
         ];
     }
 
-    const priceEl    = document.getElementById('c'+id+'-price');
-    const priceLabel = document.getElementById('c'+id+'-price-label');
-    const breakdown  = document.getElementById('c'+id+'-breakdown');
-    const tbody      = document.getElementById('c'+id+'-rows');
+    const priceEl     = document.getElementById('c'+id+'-price');
+    const priceHidden = document.getElementById('c'+id+'-price-hidden');
+    const priceLabel  = document.getElementById('c'+id+'-price-label');
+    const breakdown   = document.getElementById('c'+id+'-breakdown');
+    const tbody       = document.getElementById('c'+id+'-rows');
 
     if (priceLabel) priceLabel.textContent = 'Unit Price / kg (' + currency + ')';
 
     const storedPrice = (currency === 'USD' && rwfRateCard > 0) ? unitPrice / rwfRateCard : unitPrice;
-    if (priceEl && !cardPriceEdited[id]) priceEl.value = storedPrice > 0 ? storedPrice.toFixed(2) : '';
+    if (priceEl && !cardPriceEdited[id]) {
+        priceEl.value = storedPrice > 0 ? formatMoneyInput(storedPrice) : '';
+    }
 
-    const manualPrice    = parseFloat(priceEl?.value) || 0;
+    const displayPrice = cardPriceEdited[id] ? parseMoney(priceEl?.value) : storedPrice;
+    if (priceHidden) priceHidden.value = displayPrice > 0 ? displayPrice.toFixed(2) : '';
+
     const effectivePrice = cardPriceEdited[id]
-        ? ((currency === 'USD' && rwfRateCard > 0) ? manualPrice * rwfRateCard : manualPrice)
+        ? ((currency === 'USD' && rwfRateCard > 0) ? displayPrice * rwfRateCard : displayPrice)
         : unitPrice;
     const effectiveTakeHome = effectivePrice * qty;
 
@@ -1190,8 +1192,12 @@ function submitQuickSupplier() {
         if (d.success) {
             const s    = d.supplier;
             const text = s.name + (s.phone ? ' — ' + s.phone : '');
-            suppSelect.addOption({ value: String(s.id), text });
-            suppSelect.setValue(String(s.id));
+            const suppSel = document.querySelector('[name="supplier_id"]');
+            const opt     = document.createElement('option');
+            opt.value = String(s.id);
+            opt.text  = text;
+            suppSel.appendChild(opt);
+            suppSel.value = String(s.id);
             onSupplierChange(String(s.id));
             closeQuickSupplier();
             showAlert('success', 'Supplier <strong>' + esc(s.name) + '</strong> registered and selected.');
@@ -1225,7 +1231,7 @@ document.getElementById('qs-form').addEventListener('keydown', e => {
 
 function resetPurchaseForm() {
     document.getElementById('batch-form').reset();
-    suppSelect.setValue('');
+    document.querySelector('[name="supplier_id"]').value = '';
 
     /* clear mineral cards */
     document.getElementById('mineral-cards').innerHTML = '';
@@ -1249,11 +1255,6 @@ function resetPurchaseForm() {
     currentNetToPay = 0;
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-
-const suppSelect = new TomSelect('[name="supplier_id"]', {
-    allowEmptyOption: true,
-    onChange: onSupplierChange,
-});
 
 document.getElementById('batch-form').addEventListener('submit', function (e) {
     e.preventDefault();

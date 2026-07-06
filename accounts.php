@@ -151,7 +151,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Summary cards -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.25rem">
+<div class="stats-grid">
     <?php
     $cards = [
         ['cash',  'fas fa-money-bill-wave', 'Cash',          '#16a34a', $totals['cash']],
@@ -173,71 +173,83 @@ include 'includes/header.php';
     <?php endforeach; ?>
 </div>
 
-<!-- Add / Edit slide panel -->
-<div class="slide-panel" id="acct-panel">
-    <h3 id="panel-title"><i class="fas fa-plus-circle" style="margin-right:.4rem"></i>Add Account</h3>
-    <input type="hidden" id="panel-mode" value="add">
-    <input type="hidden" id="panel-id"   value="">
-    <div class="form-grid form-grid-2">
-        <div class="form-group" id="type-group">
-            <label>Account Type</label>
-            <select id="f-type">
-                <option value="">— Select type —</option>
-                <option value="cash">Cash</option>
-                <option value="bank">Bank </option>
-                <option value="momo">Mobile Money (MoMo)</option>
-            </select>
+<!-- Add / Edit modal -->
+<div class="modal-backdrop" id="acct-panel" onclick="if(event.target===this)closePanel()">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-header">
+            <h3 id="panel-title"><i class="fas fa-plus-circle" style="margin-right:.4rem"></i>Add Account</h3>
+            <button class="modal-close" type="button" onclick="closePanel()"><i class="fas fa-xmark"></i></button>
         </div>
-        <div class="form-group">
-            <label>Account Name</label>
-            <input type="text" id="f-name" placeholder="e.g. Main Cash Box, BPR Account…">
+        <div class="modal-body">
+            <input type="hidden" id="panel-mode" value="add">
+            <input type="hidden" id="panel-id"   value="">
+            <div class="form-grid form-grid-2">
+                <div class="form-group" id="type-group">
+                    <label>Account Type</label>
+                    <select id="f-type">
+                        <option value="">— Select type —</option>
+                        <option value="cash">Cash</option>
+                        <option value="bank">Bank </option>
+                        <option value="momo">Mobile Money (MoMo)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Account Name</label>
+                    <input type="text" id="f-name" placeholder="e.g. Main Cash Box, BPR Account…">
+                </div>
+                <div class="form-group" id="opening-group">
+                    <label>Opening Balance (FRW)</label>
+                    <input type="number" id="f-opening" placeholder="0.00" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input type="text" id="f-notes" placeholder="Optional…">
+                </div>
+                <div class="form-group" id="active-group" style="display:none">
+                    <label>Status</label>
+                    <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+                        <input type="checkbox" id="f-active" checked> Active
+                    </label>
+                </div>
+            </div>
         </div>
-        <div class="form-group" id="opening-group">
-            <label>Opening Balance (FRW)</label>
-            <input type="text" id="f-opening" placeholder="0.00">
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closePanel()">Cancel</button>
+            <button type="button" id="panel-save-btn" class="btn btn-primary" onclick="savePanel()">
+                <i class="fas fa-save"></i> Save
+            </button>
         </div>
-        <div class="form-group">
-            <label>Notes</label>
-            <input type="text" id="f-notes" placeholder="Optional…">
-        </div>
-        <div class="form-group" id="active-group" style="display:none">
-            <label>Status</label>
-            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
-                <input type="checkbox" id="f-active" checked> Active
-            </label>
-        </div>
-    </div>
-    <div class="slide-panel-btns">
-        <button type="button" id="panel-save-btn" class="btn btn-primary" onclick="savePanel()">
-            <i class="fas fa-save"></i> Save
-        </button>
-        <button type="button" class="btn btn-secondary" onclick="closePanel()">Cancel</button>
     </div>
 </div>
 
 <!-- Adjust modal -->
-<div id="adjust-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center">
-    <div style="background:var(--bg);border-radius:12px;padding:1.5rem;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.25)">
-        <h3 style="margin:0 0 1rem;font-size:1rem"><i class="fas fa-sliders" style="margin-right:.4rem"></i>Adjust Balance — <span id="adj-name"></span></h3>
-        <input type="hidden" id="adj-id">
-        <div class="form-grid form-grid-2">
-            <div class="form-group">
-                <label>Type</label>
-                <select id="adj-type">
-                    <option value="credit">Credit (add money)</option>
-                    <option value="debit">Debit (remove money)</option>
-                </select>
+<div class="modal-backdrop" id="adjust-modal" onclick="if(event.target===this)closeAdjust()">
+    <div class="modal" style="max-width:420px">
+        <div class="modal-header">
+            <h3><i class="fas fa-sliders" style="margin-right:.4rem"></i>Adjust Balance — <span id="adj-name"></span></h3>
+            <button class="modal-close" type="button" onclick="closeAdjust()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="adj-id">
+            <div class="form-grid form-grid-2">
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="adj-type">
+                        <option value="credit">Credit (add money)</option>
+                        <option value="debit">Debit (remove money)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Amount (FRW)</label>
+                    <input type="number" id="adj-amount" placeholder="0.00" step="0.01">
+                </div>
             </div>
             <div class="form-group">
-                <label>Amount (FRW)</label>
-                <input type="text" id="adj-amount" placeholder="0.00">
+                <label>Description</label>
+                <input type="text" id="adj-desc" placeholder="Reason for adjustment…">
             </div>
         </div>
-        <div class="form-group">
-            <label>Description</label>
-            <input type="text" id="adj-desc" placeholder="Reason for adjustment…">
-        </div>
-        <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1rem">
+        <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeAdjust()">Cancel</button>
             <button class="btn btn-primary" id="adj-save-btn" onclick="saveAdjust()"><i class="fas fa-check"></i> Apply</button>
         </div>
@@ -245,26 +257,28 @@ include 'includes/header.php';
 </div>
 
 <!-- History modal -->
-<div id="history-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center">
-    <div style="background:var(--bg);border-radius:12px;padding:1.5rem;width:100%;max-width:680px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.25)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-            <h3 style="margin:0;font-size:1rem"><i class="fas fa-clock-rotate-left" style="margin-right:.4rem"></i>Transaction History — <span id="hist-name"></span></h3>
-            <button onclick="closeHistory()" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:var(--text-muted)"><i class="fas fa-xmark"></i></button>
+<div class="modal-backdrop" id="history-modal" onclick="if(event.target===this)closeHistory()">
+    <div class="modal" style="max-width:680px">
+        <div class="modal-header">
+            <h3><i class="fas fa-clock-rotate-left" style="margin-right:.4rem"></i>Transaction History — <span id="hist-name"></span></h3>
+            <button class="modal-close" type="button" onclick="closeHistory()"><i class="fas fa-xmark"></i></button>
         </div>
-        <div style="overflow-y:auto;flex:1">
-            <table style="width:100%;border-collapse:collapse;font-size:.83rem">
-                <thead>
-                    <tr style="border-bottom:2px solid var(--border)">
-                        <th style="padding:.4rem .6rem;text-align:left">Date</th>
-                        <th style="padding:.4rem .6rem;text-align:left">Type</th>
-                        <th style="padding:.4rem .6rem;text-align:right">Amount</th>
-                        <th style="padding:.4rem .6rem;text-align:right">Balance After</th>
-                        <th style="padding:.4rem .6rem;text-align:left">Description</th>
-                        <th style="padding:.4rem .6rem;text-align:left">By</th>
-                    </tr>
-                </thead>
-                <tbody id="hist-body"></tbody>
-            </table>
+        <div class="modal-body">
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:.83rem">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border)">
+                            <th style="padding:.4rem .6rem;text-align:left;white-space:nowrap">Date</th>
+                            <th style="padding:.4rem .6rem;text-align:left;white-space:nowrap">Type</th>
+                            <th style="padding:.4rem .6rem;text-align:right;white-space:nowrap">Amount</th>
+                            <th style="padding:.4rem .6rem;text-align:right;white-space:nowrap">Balance After</th>
+                            <th style="padding:.4rem .6rem;text-align:left">Description</th>
+                            <th style="padding:.4rem .6rem;text-align:left;white-space:nowrap">By</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hist-body"></tbody>
+                </table>
+            </div>
             <div id="hist-empty" style="display:none;text-align:center;padding:2rem;color:var(--text-muted)">No transactions yet.</div>
         </div>
     </div>
@@ -514,9 +528,9 @@ function openAdjust(id, name){
     document.getElementById('adj-type').value  = 'credit';
     document.getElementById('adj-amount').value = '';
     document.getElementById('adj-desc').value   = '';
-    document.getElementById('adjust-modal').style.display = 'flex';
+    document.getElementById('adjust-modal').classList.add('open');
 }
-function closeAdjust(){ document.getElementById('adjust-modal').style.display = 'none'; }
+function closeAdjust(){ document.getElementById('adjust-modal').classList.remove('open'); }
 
 function saveAdjust(){
     const btn = document.getElementById('adj-save-btn');
@@ -553,7 +567,7 @@ function openHistory(id, name){
     document.getElementById('hist-name').textContent = name;
     document.getElementById('hist-body').innerHTML   = '<tr><td colspan="6" style="text-align:center;padding:1.5rem;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
     document.getElementById('hist-empty').style.display = 'none';
-    document.getElementById('history-modal').style.display = 'flex';
+    document.getElementById('history-modal').classList.add('open');
 
     fetch('accounts.php?history='+id, {headers:{'X-Requested-With':'XMLHttpRequest'}})
     .then(r=>r.json()).then(d=>{
@@ -578,10 +592,7 @@ function openHistory(id, name){
         }).join('');
     });
 }
-function closeHistory(){ document.getElementById('history-modal').style.display = 'none'; }
-
-document.getElementById('adjust-modal').addEventListener('click', function(e){ if(e.target===this) closeAdjust(); });
-document.getElementById('history-modal').addEventListener('click', function(e){ if(e.target===this) closeHistory(); });
+function closeHistory(){ document.getElementById('history-modal').classList.remove('open'); }
 </script>
 
 <?php include 'includes/footer.php'; ?>

@@ -15,6 +15,7 @@ try {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title><?= htmlspecialchars($page_title??'Minerals Depot') ?> — MDMS</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f59e0b'/%3E%3Cpath d='M4 25 L12 11 L16 17 L21 8 L29 25 Z' fill='%23ffffff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/vendor/fontawesome/all.min.css">
 <?php if(isset($extra_head)) echo $extra_head; ?>
@@ -92,6 +93,8 @@ try {
             </div>
         </div>
         <?php endif; ?>
+
+        <a href="logout.php" class="nav-link nav-logout-mobile"><i class="fas fa-right-from-bracket"></i> Logout</a>
     </div>
 
     <button class="topnav-toggle" onclick="toggleTopnav()" aria-label="Menu"><i class="fas fa-bars"></i></button>
@@ -108,15 +111,18 @@ try {
 
 <div class="quickbar">
     <a href="new-purchase.php" class="qb-item <?= $cur==='new-purchase' ?'qb-active':'' ?>"><i class="fas fa-boxes-stacked"></i> New Purchase</a>
+      <a href="manual_journal.php" class="qb-item qb-cyan <?= $cur==='manual_journal' ?'qb-active':'' ?>"><i class="fas fa-pen-to-square"></i> Manual Journal</a>
+  
     <a href="new-sales.php"    class="qb-item qb-green <?= $cur==='new-sales'    ?'qb-active':'' ?>"><i class="fas fa-chart-line"></i> New Sale</a>
     <a href="expenses.php"     class="qb-item qb-red <?= $cur==='expenses'       ?'qb-active':'' ?>"><i class="fas fa-receipt"></i> Expenses</a>
     <div class="qb-divider"></div>
+       <a href="supply-stock.php" class="qb-item qb-amber <?= $cur==='supply-stock' ?'qb-active':'' ?>"><i class="fas fa-warehouse"></i> Supplier Stock</a>
+   
     <a href="accounts.php"     class="qb-item qb-purple <?= $cur==='accounts'    ?'qb-active':'' ?>"><i class="fas fa-building-columns"></i> Accounts</a>
     <a href="buyers.php"       class="qb-item qb-amber <?= $cur==='buyers'       ?'qb-active':'' ?>"><i class="fas fa-handshake"></i> Buyers</a>
-    <a href="supply-stock.php" class="qb-item qb-amber <?= $cur==='supply-stock' ?'qb-active':'' ?>"><i class="fas fa-warehouse"></i> Supplier Stock</a>
+ 
     <div class="qb-divider"></div>
     <a href="journal.php"        class="qb-item qb-cyan <?= $cur==='journal'        ?'qb-active':'' ?>"><i class="fas fa-book-open"></i> Automatic Journal</a>
-    <a href="manual_journal.php" class="qb-item qb-cyan <?= $cur==='manual_journal' ?'qb-active':'' ?>"><i class="fas fa-pen-to-square"></i> Manual Journal</a>
     <!-- <a href="reports.php"        class="qb-item qb-cyan <?= $cur==='reports'        ?'qb-active':'' ?>"><i class="fas fa-chart-bar"></i> Reports</a> -->
     <?php if(isset($_SESSION['role']) && in_array($_SESSION['role'],['superadmin'])): ?>
     <div class="qb-divider"></div>

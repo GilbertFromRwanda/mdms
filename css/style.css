@@ -180,6 +180,8 @@ body {
 }
 .user-logout:hover { color:var(--danger); background:rgba(239,68,68,.12); }
 
+.nav-logout-mobile { display:none; }
+
 /* Mobile toggle */
 .topnav-toggle {
     display:none;
@@ -759,6 +761,14 @@ tbody tr:hover { background:#f8fafc; }
     .topnav-links .nav-link { padding:.55rem 1.25rem; border-radius:0; }
     .topnav-toggle { display:flex; }
     .topnav-user { display:none; }
+    .nav-logout-mobile {
+        display:flex;
+        color:#fca5a5;
+        border-top:1px solid rgba(255,255,255,.1);
+        margin-top:.3rem;
+        padding-top:.75rem;
+    }
+    .nav-logout-mobile:hover { background:rgba(239,68,68,.15); color:#fff; }
     .nav-drop { width:100%; }
     .nav-drop > .nav-link { width:100%; justify-content:space-between; }
     .nav-drop-menu {
@@ -788,4 +798,19 @@ tbody tr:hover { background:#f8fafc; }
 
 @media(max-width:480px){
     .stats-grid { grid-template-columns:1fr; }
+}
+
+/* ── Supply stock: advance payment row ──────────────────────────── */
+.adv-row-grid       { display:grid; grid-template-columns:130px 1fr 110px 110px 28px; gap:.4rem; align-items:center; margin-bottom:.35rem; }
+.adv-col-labels-grid{ grid-template-columns:130px 1fr 110px 110px 28px; gap:.4rem; margin-bottom:.25rem; padding:0 .1rem; }
+
+@media(max-width:560px){
+    .adv-col-labels-grid { display:none !important; }
+    .adv-row-grid { grid-template-columns:1fr 1fr; row-gap:.35rem; }
+    .adv-row-grid > *:nth-child(1) { order:1; }
+    .adv-row-grid > *:nth-child(5) { order:2; justify-self:end; }
+    .adv-row-grid > *:nth-child(2) { order:3; grid-column:1/-1; }
+    .adv-row-grid > *:nth-child(3) { order:4; }
+    .adv-row-grid > *:nth-child(4) { order:5; }
+    .adv-row-grid > *:nth-child(6) { order:6; grid-column:1/-1; }
 }

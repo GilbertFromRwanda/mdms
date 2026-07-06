@@ -220,7 +220,7 @@ include 'includes/header.php';
 </div>
 
 <!-- Summary cards -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem">
+<div class="stats-grid">
     <div class="stat-card" style="border-left:3px solid var(--success)">
         <div class="stat-label"><i class="fas fa-arrow-down" style="color:var(--success)"></i> Total In</div>
         <div class="stat-value" style="color:var(--success)" id="card-in"><?= number_format($totals['in'],3) ?> <small style="font-size:.55em;font-weight:400">kg</small></div>
@@ -298,7 +298,7 @@ include 'includes/header.php';
                         </button>
                     </div>
                     <!-- column headers -->
-                    <div id="adv-col-labels" style="display:none;grid-template-columns:130px 1fr 110px 110px 28px;gap:.4rem;margin-bottom:.25rem;padding:0 .1rem">
+                    <div id="adv-col-labels" class="adv-col-labels-grid" style="display:none">
                         <span style="font-size:.72rem;font-weight:600;color:var(--text-muted)">Method</span>
                         <span style="font-size:.72rem;font-weight:600;color:var(--text-muted)">Account</span>
                         <span style="font-size:.72rem;font-weight:600;color:var(--text-muted);text-align:right">Balance</span>
@@ -481,8 +481,8 @@ function buildAccountOpts(method){
 function addPaymentRow(defaultMethod, defaultAcct, defaultAmt){
     const n   = ++payRowCnt;
     const row = document.createElement('div');
-    row.id    = 'prow-' + n;
-    row.style.cssText = 'display:grid;grid-template-columns:130px 1fr 110px 110px 28px;gap:.4rem;align-items:center;margin-bottom:.35rem';
+    row.id        = 'prow-' + n;
+    row.className = 'adv-row-grid';
 
     const mOpts = ['cash','bank','momo'].map(m =>
         `<option value="${m}"${m === (defaultMethod||'cash') ? ' selected' : ''}>${METHOD_LABELS[m]}</option>`

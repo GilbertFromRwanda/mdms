@@ -420,7 +420,7 @@ body, .page-content { background:#fff; }
                         <input type="date" name="entry_date" value="<?= date('Y-m-d') ?>" required>
                     </div>
                     <div class="form-group">
-                        <label>Type</label>
+                        <label>Entry Type</label>
                         <select name="entry_type" required>
                             <option value="" disabled selected>Select Type</option>
                             <option value="credit">Credit</option>
