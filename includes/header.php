@@ -33,11 +33,12 @@ try {
         <a href="dashboard.php"  class="nav-link <?= $cur==='dashboard'  ?'active':'' ?>"><i class="fas fa-gauge-high"></i> Dashboard</a>
         <a href="inventory.php"  class="nav-link <?= $cur==='inventory'  ?'active':'' ?>"><i class="fas fa-warehouse"></i> Inventory</a>
 
-        <div class="nav-drop <?= in_array($cur,['batches','new-purchase'])?'active':'' ?>">
+        <div class="nav-drop <?= in_array($cur,['batches','new-purchase','calculator'])?'active':'' ?>">
             <button class="nav-link nav-drop-toggle"><i class="fas fa-boxes-stacked"></i> Purchase <i class="fas fa-chevron-down nav-caret"></i></button>
             <div class="nav-drop-menu">
                 <a href="batches.php"      class="<?= $cur==='batches'      ?'active':'' ?>"><i class="fas fa-list"></i> View All</a>
                 <a href="new-purchase.php" class="<?= $cur==='new-purchase' ?'active':'' ?>"><i class="fas fa-plus"></i> New Purchase</a>
+                <a href="calculator.php"   class="<?= $cur==='calculator'   ?'active':'' ?>"><i class="fas fa-calculator"></i> Calculator</a>
             </div>
         </div>
 
@@ -111,6 +112,7 @@ try {
 
 <div class="quickbar">
     <a href="new-purchase.php" class="qb-item <?= $cur==='new-purchase' ?'qb-active':'' ?>"><i class="fas fa-boxes-stacked"></i> New Purchase</a>
+    <a href="calculator.php" class="qb-item <?= $cur==='calculator' ?'qb-active':'' ?>"><i class="fas fa-calculator"></i> Calculator</a>
       <a href="manual_journal.php" class="qb-item qb-cyan <?= $cur==='manual_journal' ?'qb-active':'' ?>"><i class="fas fa-pen-to-square"></i> Manual Journal</a>
   
     <a href="new-sales.php"    class="qb-item qb-green <?= $cur==='new-sales'    ?'qb-active':'' ?>"><i class="fas fa-chart-line"></i> New Sale</a>
