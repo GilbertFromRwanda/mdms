@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php -i)",
+      "Bash(php -r ' *)",
+      "Bash(php \"C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--xampp-htdocs-mine-mdms\\\\60b8fb54-b38d-4c68-b57d-d91ab43c89c5\\\\scratchpad\\\\mj_sell_test.php\")",
+      "Bash(php \"C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--xampp-htdocs-mine-mdms\\\\60b8fb54-b38d-4c68-b57d-d91ab43c89c5\\\\scratchpad\\\\mj_sell_fail_test.php\")",
+      "Bash(php \"C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--xampp-htdocs-mine-mdms\\\\60b8fb54-b38d-4c68-b57d-d91ab43c89c5\\\\scratchpad\\\\mj_delete_test.php\" 23)",
+      "Bash(php \"C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--xampp-htdocs-mine-mdms\\\\60b8fb54-b38d-4c68-b57d-d91ab43c89c5\\\\scratchpad\\\\mj_repay_test.php\")",
+      "Bash(php \"C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--xampp-htdocs-mine-mdms\\\\60b8fb54-b38d-4c68-b57d-d91ab43c89c5\\\\scratchpad\\\\mj_delete_test.php\" 31)"
+    ]
+  }
+}

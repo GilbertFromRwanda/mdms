@@ -54,3 +54,8 @@ CREATE TABLE IF NOT EXISTS manual_journal (
 ALTER TABLE manual_journal ADD INDEX idx_entry_date (entry_date);
 ALTER TABLE manual_journal ADD INDEX idx_entry_type (entry_type);
 
+ALTER TABLE manual_journal ADD COLUMN IF NOT EXISTS source VARCHAR(30) DEFAULT NULL AFTER entry_type;
+ALTER TABLE manual_journal ADD COLUMN IF NOT EXISTS source_ref_id INT DEFAULT NULL AFTER source;
+ALTER TABLE manual_journal ADD COLUMN IF NOT EXISTS source_details TEXT DEFAULT NULL AFTER source_ref_id;
+ALTER TABLE manual_journal ADD INDEX IF NOT EXISTS idx_source (source);
+

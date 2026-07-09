@@ -10,18 +10,113 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
         $amount  = round(floatval(str_replace(',', '', $_POST['amount'] ?? '0')), 2);
         $comment = trim($_POST['comment'] ?? '');
         $type    = in_array($_POST['entry_type'] ?? '', ['credit','debit']) ? $_POST['entry_type'] : null;
+        $source  = $_POST['source'] ?? '';
+
+        $CREDIT_SOURCES = ['boss','selling_minerals','buyer_loan','supplier_loan_repayment'];
+        $DEBIT_SOURCES  = ['expense','purchase_minerals','supplier_loan'];
 
         if(!$comment) throw new Exception('Comment is required.');
         if($amount <= 0) throw new Exception('Amount must be greater than 0.');
         if(!$type) throw new Exception('Please choose Credit or Debit.');
+        $allowedSources = $type==='credit' ? $CREDIT_SOURCES : $DEBIT_SOURCES;
+        if(!in_array($source,$allowedSources,true)) throw new Exception('Please choose a valid source.');
 
-        $pdo->prepare("INSERT INTO manual_journal (entry_date,amount,`comment`,entry_type,created_by) VALUES (?,?,?,?,?)")
-            ->execute([$date,$amount,$comment,$type,$_SESSION['user_id']]);
+        $source_ref_id = null; $source_details = null;
+
+        $pdo->beginTransaction();
+
+        if($source === 'expense'){
+            $cat = trim($_POST['source_expense_category'] ?? '') ?: 'Other';
+            $pdo->prepare("INSERT INTO expenses (expense_date,category,description,amount,payment_method,account_id,notes,created_by) VALUES (?,?,?,?,'cash',NULL,NULL,?)")
+                ->execute([$date,$cat,$comment,$amount,$_SESSION['user_id']]);
+            $source_ref_id  = (int)$pdo->lastInsertId();
+            $source_details = json_encode(['category'=>$cat]);
+
+        } elseif($source === 'supplier_loan'){
+            $supplierId = intval($_POST['source_supplier_id'] ?? 0);
+            if(!$supplierId) throw new Exception('Please select a supplier.');
+            $sn = $pdo->prepare("SELECT name FROM suppliers WHERE id=?"); $sn->execute([$supplierId]);
+            $supplierName = $sn->fetchColumn();
+            if(!$supplierName) throw new Exception('Supplier not found.');
+            $pdo->prepare("INSERT INTO supplier_loans (supplier_id,batch_id,type,amount,notes,is_deferred,created_by) VALUES (?,NULL,'loan',?,?,0,?)")
+                ->execute([$supplierId,$amount,$comment,$_SESSION['user_id']]);
+            $source_ref_id  = (int)$pdo->lastInsertId();
+            $source_details = json_encode(['supplier_id'=>$supplierId,'supplier_name'=>$supplierName]);
+
+        } elseif($source === 'supplier_loan_repayment'){
+            $supplierId = intval($_POST['source_supplier_id'] ?? 0);
+            if(!$supplierId) throw new Exception('Please select a supplier.');
+            $sn = $pdo->prepare("SELECT name FROM suppliers WHERE id=?"); $sn->execute([$supplierId]);
+            $supplierName = $sn->fetchColumn();
+            if(!$supplierName) throw new Exception('Supplier not found.');
+            $pdo->prepare("INSERT INTO supplier_loans (supplier_id,batch_id,type,amount,notes,is_deferred,created_by) VALUES (?,NULL,'repayment',?,?,0,?)")
+                ->execute([$supplierId,$amount,$comment,$_SESSION['user_id']]);
+            $source_ref_id  = (int)$pdo->lastInsertId();
+            $source_details = json_encode(['supplier_id'=>$supplierId,'supplier_name'=>$supplierName]);
+
+        } elseif($source === 'buyer_loan'){
+            $buyerId = intval($_POST['source_buyer_id'] ?? 0);
+            if(!$buyerId) throw new Exception('Please select a buyer.');
+            $bn = $pdo->prepare("SELECT name FROM buyers WHERE id=?"); $bn->execute([$buyerId]);
+            $buyerName = $bn->fetchColumn();
+            if(!$buyerName) throw new Exception('Buyer not found.');
+            $pdo->prepare("INSERT INTO buyer_loans (buyer_id,sale_id,type,amount,notes,created_by,is_advance) VALUES (?,NULL,'repayment',?,?,?,0)")
+                ->execute([$buyerId,$amount,$comment,$_SESSION['user_id']]);
+            $source_ref_id  = (int)$pdo->lastInsertId();
+            $source_details = json_encode(['buyer_id'=>$buyerId,'buyer_name'=>$buyerName]);
+
+        } elseif($source === 'purchase_minerals'){
+            $ids  = $_POST['pm_minerals'] ?? [];
+            $qtys = $_POST['pm_qty'] ?? [];
+            $minerals_used = [];
+            $upsert = $pdo->prepare("INSERT INTO inventory (mineral_type_id,current_stock) VALUES (?,?) ON DUPLICATE KEY UPDATE current_stock = current_stock + VALUES(current_stock)");
+            $nameStmt = $pdo->prepare("SELECT name FROM mineral_types WHERE id=?");
+            foreach($ids as $mid){
+                $mid = intval($mid);
+                $qty = round(floatval($qtys[$mid] ?? 0), 3);
+                if($mid<=0 || $qty<=0) continue;
+                $nameStmt->execute([$mid]); $name = $nameStmt->fetchColumn();
+                if(!$name) continue;
+                $upsert->execute([$mid,$qty]);
+                $minerals_used[] = ['mineral_id'=>$mid,'name'=>$name,'qty'=>$qty];
+            }
+            if(!$minerals_used) throw new Exception('Select at least one mineral with a quantity greater than 0.');
+            $source_details = json_encode(['minerals'=>$minerals_used]);
+
+        } elseif($source === 'selling_minerals'){
+            $ids  = $_POST['pm_minerals'] ?? [];
+            $qtys = $_POST['pm_qty'] ?? [];
+            $minerals_used = [];
+            $stockStmt = $pdo->prepare("SELECT current_stock FROM inventory WHERE mineral_type_id=? FOR UPDATE");
+            $deduct    = $pdo->prepare("UPDATE inventory SET current_stock = current_stock - ? WHERE mineral_type_id=?");
+            $nameStmt  = $pdo->prepare("SELECT name FROM mineral_types WHERE id=?");
+            foreach($ids as $mid){
+                $mid = intval($mid);
+                $qty = round(floatval($qtys[$mid] ?? 0), 3);
+                if($mid<=0 || $qty<=0) continue;
+                $nameStmt->execute([$mid]); $name = $nameStmt->fetchColumn();
+                if(!$name) continue;
+                $stockStmt->execute([$mid]); $available = (float)$stockStmt->fetchColumn();
+                if($qty > $available) throw new Exception("Not enough $name in stock (available: ".number_format($available,3)."kg).");
+                $deduct->execute([$qty,$mid]);
+                $minerals_used[] = ['mineral_id'=>$mid,'name'=>$name,'qty'=>$qty];
+            }
+            if(!$minerals_used) throw new Exception('Select at least one mineral with a quantity greater than 0.');
+            $source_details = json_encode(['minerals'=>$minerals_used]);
+        }
+        /* boss: descriptive only, no linked record */
+
+        $pdo->prepare("INSERT INTO manual_journal (entry_date,amount,`comment`,entry_type,source,source_ref_id,source_details,created_by) VALUES (?,?,?,?,?,?,?,?)")
+            ->execute([$date,$amount,$comment,$type,$source,$source_ref_id,$source_details,$_SESSION['user_id']]);
         $newId = $pdo->lastInsertId();
-        logAction($pdo,$_SESSION['user_id'],'CREATE','manual_journal',$newId,"Manual $type: $comment — $amount FRW");
+        logAction($pdo,$_SESSION['user_id'],'CREATE','manual_journal',$newId,"Manual $type ($source): $comment — $amount FRW");
 
+        $pdo->commit();
         echo json_encode(['success'=>true,'message'=>'Journal entry recorded.']);
-    } catch(Exception $e){ echo json_encode(['success'=>false,'message'=>$e->getMessage()]); }
+    } catch(Exception $e){
+        if($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success'=>false,'message'=>$e->getMessage()]);
+    }
     exit;
 }
 
@@ -33,10 +128,38 @@ if($_SERVER['REQUEST_METHOD']==='POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'
         if(!$id) throw new Exception('Invalid record.');
         $row=$pdo->prepare("SELECT * FROM manual_journal WHERE id=?"); $row->execute([$id]); $rec=$row->fetch();
         if(!$rec) throw new Exception('Record not found.');
+
+        $pdo->beginTransaction();
+
+        if($rec['source']==='expense' && $rec['source_ref_id']){
+            $pdo->prepare("DELETE FROM expenses WHERE id=?")->execute([$rec['source_ref_id']]);
+        } elseif(($rec['source']==='supplier_loan' || $rec['source']==='supplier_loan_repayment') && $rec['source_ref_id']){
+            $pdo->prepare("DELETE FROM supplier_loans WHERE id=?")->execute([$rec['source_ref_id']]);
+        } elseif($rec['source']==='buyer_loan' && $rec['source_ref_id']){
+            $pdo->prepare("DELETE FROM buyer_loans WHERE id=?")->execute([$rec['source_ref_id']]);
+        } elseif($rec['source']==='purchase_minerals' && $rec['source_details']){
+            $details = json_decode($rec['source_details'], true);
+            $revert = $pdo->prepare("UPDATE inventory SET current_stock = GREATEST(0, current_stock - ?) WHERE mineral_type_id=?");
+            foreach(($details['minerals'] ?? []) as $m){
+                $revert->execute([$m['qty'], $m['mineral_id']]);
+            }
+        } elseif($rec['source']==='selling_minerals' && $rec['source_details']){
+            $details = json_decode($rec['source_details'], true);
+            $restore = $pdo->prepare("INSERT INTO inventory (mineral_type_id,current_stock) VALUES (?,?) ON DUPLICATE KEY UPDATE current_stock = current_stock + VALUES(current_stock)");
+            foreach(($details['minerals'] ?? []) as $m){
+                $restore->execute([$m['mineral_id'], $m['qty']]);
+            }
+        }
+
         $pdo->prepare("DELETE FROM manual_journal WHERE id=?")->execute([$id]);
         logAction($pdo,$_SESSION['user_id'],'DELETE','manual_journal',$id,"Deleted manual {$rec['entry_type']} {$rec['amount']} FRW: {$rec['comment']}");
+
+        $pdo->commit();
         echo json_encode(['success'=>true,'message'=>'Entry deleted.']);
-    } catch(Exception $e){ echo json_encode(['success'=>false,'message'=>$e->getMessage()]); }
+    } catch(Exception $e){
+        if($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success'=>false,'message'=>$e->getMessage()]);
+    }
     exit;
 }
 
@@ -112,7 +235,12 @@ function mj_render_rows(array $entries, array $balance_after, float $opening_bal
                 <?= date('d M Y',strtotime($en['entry_date'])) ?>
                 <div style="font-size:.7rem">Processed: <?= date('H:i',strtotime($en['created_at'])) ?></div>
             </td>
-            <td style="font-size:.85rem;font-weight:500"><?= htmlspecialchars($en['comment']) ?></td>
+            <td style="font-size:.85rem;font-weight:500">
+                <?= htmlspecialchars($en['comment']) ?>
+                <?php $srcLabel = mj_source_label($en); if($srcLabel): ?>
+                <div style="font-size:.72rem;color:var(--text-muted);margin-top:.15rem;font-weight:400"><i class="fas fa-tag" style="margin-right:.25rem"></i><?= htmlspecialchars($srcLabel) ?></div>
+                <?php endif; ?>
+            </td>
             <td style="text-align:right;font-family:monospace;font-weight:600;color:#dc2626"><?= $isCredit ? '' : number_format($en['amount'],2) ?></td>
             <td style="text-align:right;font-family:monospace;font-weight:600;color:#16a34a"><?= $isCredit ? number_format($en['amount'],2) : '' ?></td>
             <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $rowBal>=0?'var(--text)':'#dc2626' ?>"><?= number_format($rowBal,2) ?></td>
@@ -167,7 +295,12 @@ function mj_render_print_rows(array $print_entries, array $balance_after, float 
                 <?= date('d M Y',strtotime($en['entry_date'])) ?>
                 <div style="font-size:.7rem">Processed: <?= date('H:i',strtotime($en['created_at'])) ?></div>
             </td>
-            <td style="font-size:.85rem;font-weight:500"><?= htmlspecialchars($en['comment']) ?></td>
+            <td style="font-size:.85rem;font-weight:500">
+                <?= htmlspecialchars($en['comment']) ?>
+                <?php $srcLabel = mj_source_label($en); if($srcLabel): ?>
+                <div style="font-size:.72rem;color:var(--text-muted);margin-top:.15rem;font-weight:400"><i class="fas fa-tag" style="margin-right:.25rem"></i><?= htmlspecialchars($srcLabel) ?></div>
+                <?php endif; ?>
+            </td>
             <td style="text-align:right;font-family:monospace;font-weight:600;color:#dc2626"><?= $isCredit ? '' : number_format($en['amount'],2) ?></td>
             <td style="text-align:right;font-family:monospace;font-weight:600;color:#16a34a"><?= $isCredit ? number_format($en['amount'],2) : '' ?></td>
             <td style="text-align:right;font-family:monospace;font-weight:700;color:<?= $rowBal>=0?'var(--text)':'#dc2626' ?>"><?= number_format($rowBal,2) ?></td>
@@ -196,6 +329,34 @@ function mj_render_print_tfoot_row(array $print_entries, array $stats, float $la
    Page data
 ══════════════════════════════════════════════════════════════ */
 $page_title = 'Manual Journal';
+
+$mj_minerals  = $pdo->query("SELECT id,name,unit FROM mineral_types ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+$mj_suppliers = $pdo->query("SELECT id,name,phone FROM suppliers ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+$mj_buyers    = $pdo->query("SELECT id,name,phone FROM buyers ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+$MJ_EXPENSE_CATEGORIES = ['Electricity','Water','Internet','Airtime','Gas','Waste Management','Security',
+    'Transport','Salaries','Office Supplies','Equipment','Maintenance','Government Fees','Restaurant','Other'];
+
+$MJ_CREDIT_SOURCES = ['boss'=>'From boss','selling_minerals'=>'From selling minerals','buyer_loan'=>'From Buyers loan','supplier_loan_repayment'=>'Loan repayment from supplier'];
+$MJ_DEBIT_SOURCES  = ['expense'=>'Expense','purchase_minerals'=>'Purchase minerals','supplier_loan'=>'Supplier Loans'];
+
+function mj_source_label(array $en): string {
+    global $MJ_CREDIT_SOURCES, $MJ_DEBIT_SOURCES;
+    $src = $en['source'] ?? '';
+    if(!$src) return '';
+    $label = $MJ_CREDIT_SOURCES[$src] ?? $MJ_DEBIT_SOURCES[$src] ?? '';
+    if(!$label) return '';
+    $details = !empty($en['source_details']) ? json_decode($en['source_details'], true) : null;
+    if($src==='expense' && $details)        $label .= ' — '.$details['category'];
+    if(($src==='supplier_loan' || $src==='supplier_loan_repayment') && $details) $label .= ' — '.$details['supplier_name'];
+    if($src==='buyer_loan' && $details)     $label .= ' — '.$details['buyer_name'];
+    if(($src==='purchase_minerals' || $src==='selling_minerals') && $details && !empty($details['minerals'])){
+        $parts = array_map(function($m){
+            return $m['name'].' '.rtrim(rtrim(number_format($m['qty'],3),'0'),'.').'kg';
+        }, $details['minerals']);
+        $label .= ' — '.implode(', ',$parts);
+    }
+    return $label;
+}
 
 $f = [
     'date_from'  => $_GET['date_from']  ?? date('Y-m-d'),
@@ -405,7 +566,7 @@ body, .page-content { background:#fff; }
 
 <!-- ── Add Entry Modal ─────────────────────────────────────────── -->
 <div class="modal-backdrop" id="mj-modal" onclick="if(event.target===this)closeModal()">
-    <div class="modal" style="max-width:420px">
+    <div class="modal" style="max-width:460px">
         <div class="modal-header">
             <h3><i class="fas fa-pen-to-square" style="margin-right:.4rem;color:var(--primary)"></i>Add Manual Journal Entry</h3>
             <button class="modal-close" onclick="closeModal()" type="button"><i class="fas fa-xmark"></i></button>
@@ -421,11 +582,58 @@ body, .page-content { background:#fff; }
                     </div>
                     <div class="form-group">
                         <label>Entry Type</label>
-                        <select name="entry_type" required>
+                        <select name="entry_type" required onchange="onMjTypeChange()">
                             <option value="" disabled selected>Select Type</option>
                             <option value="credit">Credit</option>
                             <option value="debit">Debit</option>
                         </select>
+                    </div>
+                    <div class="form-group" id="mj-source-group" style="grid-column:1/-1;display:none">
+                        <label>Source | reason</label>
+                        <select name="source" id="mj-source" onchange="onMjSourceChange()">
+                            <option value="" disabled selected>Select Source</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="mj-src-buyer-group" style="grid-column:1/-1;display:none">
+                        <label>Buyer</label>
+                        <select name="source_buyer_id" id="mj-src-buyer" onchange="updateMjAutoComment()">
+                            <option value="">— Select buyer —</option>
+                            <?php foreach($mj_buyers as $b): ?>
+                            <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['name'].($b['phone']?' — '.$b['phone']:'')) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group" id="mj-src-supplier-group" style="grid-column:1/-1;display:none">
+                        <label>Supplier</label>
+                        <select name="source_supplier_id" id="mj-src-supplier" onchange="updateMjAutoComment()">
+                            <option value="">— Select supplier —</option>
+                            <?php foreach($mj_suppliers as $s): ?>
+                            <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name'].($s['phone']?' — '.$s['phone']:'')) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group" id="mj-src-expense-group" style="grid-column:1/-1;display:none">
+                        <label>Expense Category</label>
+                        <select name="source_expense_category" id="mj-src-expense-cat" onchange="updateMjAutoComment()">
+                            <?php foreach($MJ_EXPENSE_CATEGORIES as $c): ?>
+                            <option value="<?= htmlspecialchars($c) ?>"<?= $c==='Other'?' selected':'' ?>><?= htmlspecialchars($c) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group" id="mj-src-minerals-group" style="grid-column:1/-1;display:none">
+                        <label id="mj-src-minerals-label">Minerals</label>
+                        <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.3rem">
+                            <?php foreach($mj_minerals as $m): ?>
+                            <div style="display:flex;align-items:center;gap:.6rem">
+                                <label style="display:flex;align-items:center;gap:.4rem;font-weight:500;font-size:.85rem;min-width:110px;cursor:pointer">
+                                    <input type="checkbox" name="pm_minerals[]" value="<?= $m['id'] ?>" onchange="onMjMineralToggle(<?= $m['id'] ?>)">
+                                    <?= htmlspecialchars($m['name']) ?>
+                                </label>
+                                <input type="number" step="0.001" min="0" name="pm_qty[<?= $m['id'] ?>]" id="mj-pm-qty-<?= $m['id'] ?>"
+                                    placeholder="Qty (<?= htmlspecialchars($m['unit']?:'kg') ?>)" disabled style="max-width:140px" oninput="updateMjAutoComment()">
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                     <div class="form-group" style="grid-column:1/-1">
                         <label>Currency</label>
@@ -449,8 +657,8 @@ body, .page-content { background:#fff; }
                         <div id="mj-frw-note" style="display:none;font-size:.78rem;color:var(--text-muted);margin-top:.3rem"></div>
                     </div>
                     <div class="form-group" style="grid-column:1/-1">
-                        <label>Particulars</label>
-                        <textarea name="comment" placeholder="Reason for this entry…" style="min-height:70px" required></textarea>
+                        <label>Particulars <span style="font-weight:400;color:var(--text-muted);font-size:.78rem">(auto-filled from source — edit if you want)</span></label>
+                        <textarea name="comment" id="mj-comment" placeholder="Reason for this entry…" style="min-height:70px" oninput="mjCommentTouched=true"></textarea>
                     </div>
                 </div>
             </form>
@@ -467,6 +675,93 @@ body, .page-content { background:#fff; }
 <script>
 let currentPage = <?= (int)$page ?>;
 
+/* ── Source: depends on Entry Type ─────────────────────────────── */
+const MJ_SOURCES = {
+    credit: [['boss','From boss'],['selling_minerals','From selling minerals'],['buyer_loan','From Buyers loan'],['supplier_loan_repayment','Loan repayment from supplier']],
+    debit:  [['expense','Expense'],['purchase_minerals','Purchase minerals'],['supplier_loan','Supplier Loans']],
+};
+
+function onMjTypeChange(){
+    const type       = document.querySelector('#mj-form [name="entry_type"]').value;
+    const sourceGrp  = document.getElementById('mj-source-group');
+    const sourceSel  = document.getElementById('mj-source');
+    sourceSel.innerHTML = '<option value="" disabled selected>Select Source</option>' +
+        (MJ_SOURCES[type]||[]).map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
+    sourceGrp.style.display = type ? '' : 'none';
+    sourceSel.required = !!type;
+    onMjSourceChange();
+}
+
+function onMjSourceChange(){
+    const source = document.getElementById('mj-source').value;
+    const needsMinerals = source === 'purchase_minerals' || source === 'selling_minerals';
+    const needsSupplier = source === 'supplier_loan' || source === 'supplier_loan_repayment';
+    const groups = {
+        buyer_loan: 'mj-src-buyer-group',
+        expense:    'mj-src-expense-group',
+    };
+    Object.entries(groups).forEach(([key,groupId]) => {
+        document.getElementById(groupId).style.display = (source === key) ? '' : 'none';
+    });
+    document.getElementById('mj-src-supplier-group').style.display = needsSupplier ? '' : 'none';
+    document.getElementById('mj-src-minerals-group').style.display = needsMinerals ? '' : 'none';
+    document.getElementById('mj-src-minerals-label').textContent =
+        source === 'selling_minerals' ? 'Minerals Sold' : 'Minerals Purchased';
+    document.getElementById('mj-src-buyer').required    = source === 'buyer_loan';
+    document.getElementById('mj-src-supplier').required = needsSupplier;
+    if(!needsMinerals){
+        document.querySelectorAll('#mj-src-minerals-group input[type="checkbox"]').forEach(cb => cb.checked=false);
+        document.querySelectorAll('#mj-src-minerals-group input[type="number"]').forEach(q => { q.disabled=true; q.value=''; });
+    }
+    updateMjAutoComment();
+}
+
+function onMjMineralToggle(id){
+    const cb  = document.querySelector('input[name="pm_minerals[]"][value="'+id+'"]');
+    const qty = document.getElementById('mj-pm-qty-'+id);
+    qty.disabled = !cb.checked;
+    if(!cb.checked) qty.value = ''; else qty.focus();
+    updateMjAutoComment();
+}
+
+/* ── Build a short "[Source: …]" summary of what was collected, to append to Particulars ── */
+function mjSourceSummary(source){
+    const sel   = document.getElementById('mj-source');
+    const label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+    if(source === 'supplier_loan' || source === 'supplier_loan_repayment'){
+        const s = document.getElementById('mj-src-supplier');
+        const name = s.options[s.selectedIndex] ? s.options[s.selectedIndex].text : '';
+        return name ? `${label}: ${name}` : label;
+    }
+    if(source === 'buyer_loan'){
+        const b = document.getElementById('mj-src-buyer');
+        const name = b.options[b.selectedIndex] ? b.options[b.selectedIndex].text : '';
+        return name ? `${label}: ${name}` : label;
+    }
+    if(source === 'expense'){
+        const cat = document.getElementById('mj-src-expense-cat').value;
+        return cat ? `${label} (${cat})` : label;
+    }
+    if(source === 'purchase_minerals' || source === 'selling_minerals'){
+        const parts = Array.from(document.querySelectorAll('#mj-src-minerals-group input[type="checkbox"]:checked')).map(cb => {
+            const name = cb.parentElement.textContent.trim();
+            const qty  = document.getElementById('mj-pm-qty-'+cb.value).value;
+            return qty ? `${name} ${qty}kg` : name;
+        });
+        return parts.length ? `${label}: ${parts.join(', ')}` : label;
+    }
+    return label; // boss
+}
+
+/* ── Auto-fill Particulars from the source, so the user can skip typing a reason ── */
+let mjCommentTouched = false;
+function updateMjAutoComment(){
+    const source = document.getElementById('mj-source').value;
+    if(!source || mjCommentTouched) return;
+    const summary = mjSourceSummary(source);
+    if(summary) document.getElementById('mj-comment').value = summary;
+}
+
 /* ── Modal open / close ─────────────────────────────────────── */
 function openModal(){
     document.getElementById('mj-modal').classList.add('open');
@@ -474,7 +769,10 @@ function openModal(){
     clearModalAlert();
     document.querySelector('input[name="mj_currency"][value="FRW"]').checked=true;
     restoreMjRate();
+    mjCommentTouched = false;
+    document.getElementById('mj-comment').value = '';
     onMjCurrencyChange();
+    onMjTypeChange();
 }
 function closeModal(){
     document.getElementById('mj-modal').classList.remove('open');
@@ -624,6 +922,23 @@ document.getElementById('mj-pagination-wrap').addEventListener('click', function
 /* ── Form submit ────────────────────────────────────────────── */
 document.getElementById('mj-form').addEventListener('submit',function(e){
     e.preventDefault();
+    const source = document.getElementById('mj-source').value;
+    if(!source){
+        showModalAlert('Please choose a source.');
+        return;
+    }
+    if(source === 'purchase_minerals' || source === 'selling_minerals'){
+        const anyQty = Array.from(document.querySelectorAll('#mj-src-minerals-group input[type="checkbox"]:checked'))
+            .some(cb => mjParseNum(document.getElementById('mj-pm-qty-'+cb.value).value) > 0);
+        if(!anyQty){
+            showModalAlert('Select at least one mineral with a quantity greater than 0.');
+            return;
+        }
+    }
+    const commentEl = document.getElementById('mj-comment');
+    if(!commentEl.value.trim()){
+        commentEl.value = mjSourceSummary(source); // fallback: user skipped typing a reason
+    }
     const currency = document.querySelector('input[name="mj_currency"]:checked').value;
     if(currency==='USD' && mjParseNum(document.getElementById('mj-rate').value)<=0){
         showModalAlert('Please enter a valid exchange rate.');
@@ -632,7 +947,6 @@ document.getElementById('mj-form').addEventListener('submit',function(e){
     updateMjAmount();
     if(currency==='USD'){
         const usdAmt = mjParseNum(document.getElementById('mj-amount-native').value);
-        const commentEl = this.querySelector('[name="comment"]');
         commentEl.value = commentEl.value.replace(/\s*\(\$[\d,.]+\s*USD\)\s*$/,'').trim()
             + ' ($' + usdAmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' USD)';
     }

@@ -531,7 +531,8 @@ function buildCard(id, name, cat) {
             <div class="form-group"><label>Company Fees 1 (FRW)</label><input type="number" id="c${id}-fees1" value="2500" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Fees 2 (FRW)</label><input type="number" id="c${id}-fees2" value="3000" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Tag (FRW)</label><input type="number" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="70" oninput="calcCard(${id})"></div>`;
+            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="70" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RRA Rate (%)</label><input type="number" id="c${id}-rrarate" value="3" oninput="calcCard(${id})"></div>`;
     } else if (cat === 'coltan') {
         fields = `
             <div class="form-group"><label>TANTAL (USD)</label><input type="number" id="c${id}-tantal" placeholder="0.00" oninput="calcCard(${id})"></div>
@@ -539,7 +540,8 @@ function buildCard(id, name, cat) {
             <div class="form-group"><label>Sample (%)</label><input type="number" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RWF Rate</label><input type="number" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Tag (FRW)</label><input type="number" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="190" oninput="calcCard(${id})"></div>`;
+            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="190" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RRA Rate (%)</label><input type="number" id="c${id}-rrarate" value="3.3" oninput="calcCard(${id})"></div>`;
     } else {
         fields = `
             <div class="form-group"><label>TMU Price (USD)</label><input type="number" id="c${id}-tmt" placeholder="0.00" oninput="calcCard(${id})"></div>
@@ -547,7 +549,8 @@ function buildCard(id, name, cat) {
             <div class="form-group"><label>Sample (%)</label><input type="number" id="c${id}-sample" placeholder="0.00" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>RWF Rate</label><input type="number" id="c${id}-rwfrate" value="1460" oninput="calcCard(${id})"></div>
             <div class="form-group"><label>Tag (FRW)</label><input type="number" id="c${id}-tag" value="2000" oninput="calcCard(${id})"></div>
-            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="90" oninput="calcCard(${id})"></div>`;
+            <div class="form-group"><label>RMA (FRW)</label><input type="number" id="c${id}-rma" value="90" oninput="calcCard(${id})"></div>
+            <div class="form-group"><label>RRA Rate (%)</label><input type="number" id="c${id}-rrarate" value="3" oninput="calcCard(${id})"></div>`;
     }
 
     return `<div id="card-${id}" style="border:1px solid ${color}44;border-left:4px solid ${color};border-radius:8px;padding:1rem;background:var(--surface,var(--bg))">
@@ -604,7 +607,7 @@ function collapseCard(id) {
 function saveCardState(id) {
     const cat = cardCats[id];
     if (!cat) return;
-    const fields = { cassiterite: ['lma','rwfrate','fees1','fees2','tag','rma'], coltan: ['tantal','rwfrate','tag','rma'], wolframite: ['tmt','rwfrate','tag','rma'] };
+    const fields = { cassiterite: ['lma','rwfrate','fees1','fees2','tag','rma','rrarate'], coltan: ['tantal','rwfrate','tag','rma','rrarate'], wolframite: ['tmt','rwfrate','tag','rma','rrarate'] };
     const state  = {};
     (fields[cat] || []).forEach(f => { const el = document.getElementById('c'+id+'-'+f); if(el) state[f] = el.value; });
     localStorage.setItem('batch_card_' + cat, JSON.stringify(state));
@@ -675,9 +678,10 @@ function calcCard(id) {
         const rwfRate = parseFloat(document.getElementById('c'+id+'-rwfrate').value) || 0;
         const tag     = parseFloat(document.getElementById('c'+id+'-tag').value)     || 0;
         const rma     = parseFloat(document.getElementById('c'+id+'-rma').value)     || 0;
+        const rrarate = parseFloat(document.getElementById('c'+id+'-rrarate').value) || 0;
         rwfRateCard   = rwfRate;
 
-        const rra      = (((((lma * sample) / 100) - 800) * 0.03)/1000)*rwfRate;
+        const rra      = (((((lma * sample) / 100) - 800) * (rrarate/100))/1000)*rwfRate;
         const usd      = ((((lma - fees1) * sample) / 100) - fees2) / 1000;
         const rwf      = usd * rwfRate;
         const up       = rwf - tag - rma - rra;
@@ -692,7 +696,7 @@ function calcCard(id) {
             ['× RWF Rate',                   rwfRate.toLocaleString()],
             ['= RWF',                        fmtRWF(rwf), true],
             null,
-            ['RRA = (((LMA×sample/100 − 800) × 3%)/1000)×rwfRate', fmtRWF(rra)],
+            ['RRA = (((LMA×sample/100 − 800) × '+rrarate+'%)/1000)×rwfRate', fmtRWF(rra)],
             ['− Tag',                        fmtRWF(tag)],
             ['− RMA',                        fmtRWF(rma)],
             ['− RRA',                        fmtRWF(rra)],
@@ -707,11 +711,12 @@ function calcCard(id) {
         const rwfRate = parseFloat(document.getElementById('c'+id+'-rwfrate').value) || 0;
         const tag     = parseFloat(document.getElementById('c'+id+'-tag').value)     || 0;
         const rma     = parseFloat(document.getElementById('c'+id+'-rma').value)     || 0;
+        const rrarate = parseFloat(document.getElementById('c'+id+'-rrarate').value) || 0;
         rwfRateCard   = rwfRate;
 
         const rwf_tantal   = tantal * rwfRate;
         const global_total = rwf_tantal * sample;
-        const rra_rwf      = (global_total * 0.33) / 10;
+        const rra_rwf      = global_total * (rrarate/100);
         const up           = global_total - tag - rma - rra_rwf;
         unitPrice = up;
         const takeHome = up * qty;
@@ -723,7 +728,7 @@ function calcCard(id) {
             ['= RWF/TANTAL',                          fmtRWF(rwf_tantal), true],
             ['× Sample',                              sample],
             ['= Global Total',                        fmtRWF(global_total), true],
-            ['RRA = (Global Total × 0.33) ÷ 10',     fmtRWF(rra_rwf)],
+            ['RRA = Global Total × '+rrarate+'%',    fmtRWF(rra_rwf)],
             null,
             ['Global Total',                          fmtRWF(global_total)],
             ['− Tag',                                 fmtRWF(tag)],
@@ -740,11 +745,12 @@ function calcCard(id) {
         const rwfRate = parseFloat(document.getElementById('c'+id+'-rwfrate').value) || 0;
         const tag     = parseFloat(document.getElementById('c'+id+'-tag').value)     || 0;
         const rma     = parseFloat(document.getElementById('c'+id+'-rma').value)     || 0;
+        const rrarate = parseFloat(document.getElementById('c'+id+'-rrarate').value) || 0;
         rwfRateCard   = rwfRate;
 
         const rwf_tmt      = tmt * rwfRate;
         const global_total = (rwf_tmt * sample)/1000;
-        const rra_rwf      = global_total * 0.03;
+        const rra_rwf      = global_total * (rrarate/100);
         const up           = global_total - tag - rma - rra_rwf;
         unitPrice = up;
         const takeHome = up * qty;
@@ -756,7 +762,7 @@ function calcCard(id) {
             ['= RWF/TMT',                            fmtRWF(rwf_tmt), true],
             ['× Sample',                             sample],
             ['= Global Total',                       fmtRWF(global_total), true],
-            ['RRA = Global Total × 0.03',            fmtRWF(rra_rwf)],
+            ['RRA = Global Total × '+rrarate+'%',    fmtRWF(rra_rwf)],
             null,
             ['Global Total',                         fmtRWF(global_total)],
             ['− Tag',                                fmtRWF(tag)],

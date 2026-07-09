@@ -169,4 +169,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+document.addEventListener('wheel', function(e) {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'number' && document.activeElement === e.target) {
+        e.preventDefault();
+    }
+}, { passive: false });
 </script>
